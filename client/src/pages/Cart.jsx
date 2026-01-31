@@ -53,6 +53,7 @@ try {
         if(data.success){
             toast.success(data.message)
             setCartItems({})
+            localStorage.removeItem('cartItems')
             navigate('/my-orders')
         }else{
             toast.error(data.message)
@@ -63,10 +64,14 @@ try {
          const {data} = await axios.post('/api/order/stripe', {
             userId: user._id,
             items: cartArray.map(item=> ({product: item._id, quantity:item.quantity})),
-            address: selectedAddress._id
+            address: selectedAddress._id,
+            paymentType: "Online"
         })
 
         if(data.success){
+            toast.success("Redirecting to payment...")
+            setCartItems({})
+            localStorage.removeItem('cartItems')
             window.location.replace(data.url)
         }else{
             toast.error(data.message)

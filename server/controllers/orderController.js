@@ -29,6 +29,7 @@ export const placeOrderCOD = async (req, res) => {
             amount,
             address,
             paymentType: "COD",
+            isPaid: false
         });
 
         return res.json({ success: true, message: "Order Placed Successfully" });
@@ -40,7 +41,7 @@ export const placeOrderCOD = async (req, res) => {
 
 export const placeOrderStripe = async (req, res) => {
     try {
-        const { userId, items, address } = req.body;
+        const { userId, items, address, paymentType } = req.body;
         const {origin} = req.headers
 
         if(!address || items.length === 0) {
@@ -68,7 +69,8 @@ export const placeOrderStripe = async (req, res) => {
             items,
             amount,
             address,
-            paymentType: "Online",
+            paymentType: paymentType || "Online",
+            isPaid: false
         });
 
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
