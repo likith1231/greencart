@@ -9,12 +9,17 @@ const MyOrders = () => {
   
   const fetchMyOrders = async () => {
     try {
+        console.log('Fetching orders...');
+        console.log('Token:', localStorage.getItem('token'));
         const {data} = await axios.get('/api/order/user')
+        console.log('Order response:', data);
         if(data.success){
           setMyOrders(data.orders)
+        } else {
+          console.log('Error:', data.message);
         }
     } catch (error) {
-      console.log(error);
+      console.log('Error fetching orders:', error);
     }
   }
 
