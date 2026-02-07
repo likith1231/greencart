@@ -131,6 +131,10 @@ export const AppContextProvider = ({ children }) => {
         localStorage.setItem('cartItems', JSON.stringify(cartItems));
     }, [cartItems])
 
+    useEffect(() => {
+        fetchProducts()
+    }, [user])
+
     useEffect(()=>{
         const updateCart = async ()=>{
             try {
@@ -146,11 +150,7 @@ export const AppContextProvider = ({ children }) => {
         if(user){
             updateCart()
         }
-    },[cartItems])
-
-
-
-    const value = { navigate, user, setUser, isSeller, setIsSeller, showUserLogin, setShowUserLogin, products, currency, addToCart,updateCartItem, removeFromCart, cartItems, searchQuery,setSearchQuery, getCartAmount, getCartCount, axios, fetchProducts, setCartItems }; 
+    },[cartItems]) 
 
     return <AppContext.Provider value={value}>
         {children}
