@@ -27,7 +27,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(cors({origin: allowOrigins, credentials: true}));
 
-app.get('/', (req, res) => res.send('API is Working'));
+app.get('/', (req, res) => res.send('API is Working - Updated'));
 app.use('/api/user', userRouter);
 app.use('/api/seller', sellerRouter);
 app.use('/api/product', productRouter);
