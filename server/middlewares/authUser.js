@@ -19,13 +19,16 @@ const authUser = async (req, res, next) => {
         const tokenDecode = jwt.verify(token, process.env.JWT_SECRET);
 
         if (tokenDecode.id) {
-            req.body = req.body || {};
-            req.body.userId = tokenDecode.id;
+            // Store userId in request object for use in controllers
+            req.userId = tokenDecode.id;
+            // Also set in body for backward compatibility with existing controllers
+            if (req.body) {
+                req.body.userId = tokenDecode.id;
+            }
+            next();
         } else {
             return res.json({ success: false, message: "Not Authorized" });
         }
-
-        next();
     } catch (error) {
         res.json({ success: false, message: error.message });
     }
