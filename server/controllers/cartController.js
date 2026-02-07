@@ -8,6 +8,6 @@ export const updateCart = async (req, res) => {
         res.json({ success: true, message: "Cart Updated" });
     } catch (err) {
         console.log(err.message);
-        res.json({ success: false, message: error.message });
+        res.json({ success: false, message: err.message });
     }
 };
