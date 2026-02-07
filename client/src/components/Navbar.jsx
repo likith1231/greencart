@@ -12,6 +12,10 @@ const Navbar = () => {
     try {
       const {data} = await axios.get('/api/user/logout')
       if(data.success){
+        // Clear token from localStorage
+        localStorage.removeItem('token');
+        delete axios.defaults.headers.common['Authorization'];
+        
         setUser(null);
         navigate("/");
         toast.success(data.message)

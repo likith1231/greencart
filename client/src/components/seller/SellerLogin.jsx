@@ -16,6 +16,11 @@ const SellerLogin = () => {
       const { data } = await axios.post("/api/seller/login", {email, password});
 
       if(data.success) {
+        // Store token in localStorage and update axios headers
+        if (data.token) {
+          localStorage.setItem('sellerToken', data.token);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+        }
         setIsSeller(true);
         navigate("/seller")
       } else {
@@ -23,7 +28,7 @@ const SellerLogin = () => {
       }
 
     } catch (error) {
-      toast.error(err.message);
+      toast.error(error.message);
 
     }
   }

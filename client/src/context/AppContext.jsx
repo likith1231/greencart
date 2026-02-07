@@ -7,6 +7,18 @@ import axios from 'axios';
 axios.defaults.withCredentials = true;
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL;
 
+// Add token to axios headers if it exists in localStorage
+const setupAxios = () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+        delete axios.defaults.headers.common['Authorization'];
+    }
+};
+
+setupAxios();
+
 export const AppContext = createContext();
 
 export const AppContextProvider = ({ children }) => {
@@ -122,6 +134,17 @@ export const AppContextProvider = ({ children }) => {
     };
 
     useEffect(() => {
+        // Restore token from localStorage on app load
+        const token = localStorage.getItem('token');
+        const sellerToken = localStorage.getItem('sellerToken');
+        
+        if (token) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+        if (sellerToken) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${sellerToken}`;
+        }
+        
         fetchUser()
         fetchSeller()
         fetchProducts()
