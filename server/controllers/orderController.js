@@ -164,7 +164,12 @@ export const stripeWebhooks = async(request, response)=>{
 //Get Orders by User ID : /api/order/user
 export const getUserOrders = async (req, res) => {
     try {
-        const { userId } = req.body;
+        const userId = req.body.userId;
+        
+        if (!userId) {
+            return res.json({ success: false, message: "User not authenticated" });
+        }
+        
         const orders = await Order.find({
             userId,
             $or: [ {paymentType: "COD"}, {isPaid: true} ]
