@@ -20,10 +20,9 @@ const Login = () => {
             const {data} = await axios.post(`/api/user/${state}`,{name,email, password
             });
             if (data.success){
-                // Store token in localStorage and update axios headers
+                // Store token in localStorage (sent with every request by the axios interceptor)
                 if (data.token) {
                     localStorage.setItem('token', data.token);
-                    axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
                 }
                 navigate('/')
                 setUser(data.user)

@@ -21,8 +21,7 @@ const SellerLayout = () => {
       if(data.success) {
         // Clear token from localStorage
         localStorage.removeItem('sellerToken');
-        delete axios.defaults.headers.common['Authorization'];
-        
+
         setIsSeller(false);
         navigate("/");
         toast.success(data.message);

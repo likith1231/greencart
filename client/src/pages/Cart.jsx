@@ -1,52 +1,46 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAppContext } from "../context/AppContext";
-import { assets, dummyAddress } from "../assets/assets";
+import { assets } from "../assets/assets";
 import toast from "react-hot-toast";
 
 const Cart = () => {
-    const {products, currency, cartItems, removeFromCart, getCartCount,updateCartItem, navigate, getCartAmount, axios, user, setCartItems} = useAppContext();
-    const [cartArray, setCartArray] = useState([])
+    const {products, currency, cartItems, removeFromCart, getCartCount,updateCartItem, navigate, getCartAmount, axios, user, setCartItems, setShowUserLogin} = useAppContext();
     const [addresses, setAddresses] = useState([])
     const [showAddress, setShowAddress] = useState(false)
     const[selectedAddress, setSelectedAddress] = useState(null)
     const[paymentOption, setPaymentOption] = useState("COD")
     
-    const getCart = () => {
-        let tempArray = [];
+    // Skip cart entries whose product no longer exists (e.g. deleted by the seller)
+    const cartArray = useMemo(() => {
+        const tempArray = [];
         for(const key in cartItems) {
             const product = products.find((item) => item._id === key);
-            product.quantity = cartItems[key];
-            tempArray.push(product);
+            if (product) {
+                tempArray.push({ ...product, quantity: cartItems[key] });
+            }
         }
-        setCartArray(tempArray);
-    }
-
-    const getUserAddress = async ()=>{
-        try {
-            const {data} = await axios.get('/api/address/get');
-                if(data.success){
-                    setAddresses(data.addresses)
-                    if(data.addresses.length > 0){
-                    setSelectedAddress(data.addresses[0])
-                }   
-        }else{
-            toast.error(data.message)
-        }
-    } catch (error) {
-            toast.error(error.message)
-        }
-    }
+        return tempArray;
+    }, [products, cartItems])
 
     const placeOrder = async () => {
 try {
+    if(!user){
+        return setShowUserLogin(true)
+    }
+
+    if(cartArray.length === 0){
+        return toast.error("Your cart is empty")
+    }
+
     if(!selectedAddress){
         return toast.error("please select an address")
     }
 
+    const items = cartArray.map(item=> ({product: item._id, quantity:item.quantity}))
+
     if(paymentOption === "COD"){
         const {data} = await axios.post('/api/order/cod', {
-            userId: user._id,
-            items: cartArray.map(item=> ({product: item._id, quantity:item.quantity})),
+            items,
             address: selectedAddress._id
         })
 
@@ -62,16 +56,13 @@ try {
   
     }else{
          const {data} = await axios.post('/api/order/stripe', {
-            userId: user._id,
-            items: cartArray.map(item=> ({product: item._id, quantity:item.quantity})),
-            address: selectedAddress._id,
-            paymentType: "Online"
+            items,
+            address: selectedAddress._id
         })
 
         if(data.success){
+            // The cart is cleared by the Stripe webhook once payment succeeds
             toast.success("Redirecting to payment...")
-            setCartItems({})
-            localStorage.removeItem('cartItems')
             window.location.replace(data.url)
         }else{
             toast.error(data.message)
@@ -82,17 +73,26 @@ try {
 }
     }
 
-    useEffect(() => {
-        if(products.length > 0 && cartItems) {
-            getCart();
-        }
-    }, [products, cartItems])
-
     useEffect(()=>{
-        if(user){
-            getUserAddress()
+        if(!user){
+            return
         }
-    },[user])
+        axios.get('/api/address/get')
+            .then(({data}) => {
+                if(data.success){
+                    setAddresses(data.addresses)
+                    if(data.addresses.length > 0){
+                        setSelectedAddress(data.addresses[0])
+                    }
+                }else{
+                    toast.error(data.message)
+                }
+            })
+            .catch((error) => toast.error(error.message))
+    },[user, axios])
+
+    const cartAmount = getCartAmount()
+    const taxAmount = Math.floor(cartAmount * 0.02 * 100) / 100
 
 
     return products.length > 0 && cartItems ? (
@@ -130,7 +130,7 @@ try {
                                 </div>
                             </div>
                         </div>
-                        <p className="text-center">{currency}{product.offerPrice * product.quantity}</p>
+                        <p className="text-center">{currency}{(product.offerPrice * product.quantity).toFixed(2)}</p>
                         <button onClick={() => removeFromCart(product._id)} className="cursor-pointer mx-auto">
                             <img src={assets.remove_icon} alt="remove" className="inline-block w-6 h-6" />
                         </button>
@@ -157,8 +157,8 @@ try {
                         </button>
                         {showAddress && (
                             <div className="absolute top-12 py-1 bg-white border border-gray-300 text-sm w-full">
-                               {addresses.map((address, index) => (
-                                    <p onClick={() => {setSelectedAddress(address); setShowAddress(false)}} className="text-gray-500 p-2 hover:bg-gray-100">
+                               {addresses.map((address) => (
+                                    <p key={address._id} onClick={() => {setSelectedAddress(address); setShowAddress(false)}} className="text-gray-500 p-2 hover:bg-gray-100 cursor-pointer">
                                         {address.street}, {address.city}, {address.state}, {address.country}
                                     </p>
                                 ))}
@@ -171,7 +171,7 @@ try {
 
                     <p className="text-sm font-medium uppercase mt-6">Payment Method</p>
 
-                    <select onChange={e => setPaymentOption(e.target.value)} className="w-full border border-gray-300 bg-white px-3 py-2 mt-2 outline-none">
+                    <select onChange={e => setPaymentOption(e.target.value)} value={paymentOption} className="w-full border border-gray-300 bg-white px-3 py-2 mt-2 outline-none">
                         <option value="COD">Cash On Delivery</option>
                         <option value="Online">Online Payment</option>
                     </select>
@@ -181,16 +181,16 @@ try {
 
                 <div className="text-gray-500 mt-4 space-y-2">
                     <p className="flex justify-between">
-                        <span>Price</span><span>{currency}{getCartAmount()}</span>
+                        <span>Price</span><span>{currency}{cartAmount.toFixed(2)}</span>
                     </p>
                     <p className="flex justify-between">
                         <span>Shipping Fee</span><span className="text-green-600">Free</span>
                     </p>
                     <p className="flex justify-between">
-                        <span>Tax (2%)</span><span>{currency}{getCartAmount() * 2 / 100}</span>
+                        <span>Tax (2%)</span><span>{currency}{taxAmount.toFixed(2)}</span>
                     </p>
                     <p className="flex justify-between text-lg font-medium mt-3">
-                        <span>Total Amount:</span><span>{currency}{getCartAmount() + (getCartAmount() * 2 / 100)}</span>
+                        <span>Total Amount:</span><span>{currency}{(cartAmount + taxAmount).toFixed(2)}</span>
                     </p>
                 </div>
 

@@ -35,6 +35,11 @@ app.use('/api/cart', cartRouter);
 app.use('/api/address', addressRouter);
 app.use('/api/order', orderRouter);
 
-app.listen(port, () => {
-  console.log(`server is running on http://localhost:${port}`);
-});
+// On Vercel the app is invoked as a serverless function, so only listen locally
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`server is running on http://localhost:${port}`);
+  });
+}
+
+export default app;

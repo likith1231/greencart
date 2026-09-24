@@ -1,22 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useMemo } from "react";
 import { useAppContext } from "../context/AppContext";
 import ProductCard from "../components/ProductCard";
-import { useParams } from "react-router-dom";
 
 const AllProducts = () => {
   const { products, searchQuery } = useAppContext();
-  const [filteredProducts, setFilteredProducts] = useState([]);
-
-  useEffect(() => {
+  const filteredProducts = useMemo(() => {
     if (searchQuery.length > 0) {
-      setFilteredProducts(
-        products.filter((product) =>
-          product.name.toLowerCase().includes(searchQuery.toLowerCase()),
-        ),
-      )
-    } else {
-      setFilteredProducts(products);
+      return products.filter((product) =>
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
     }
+    return products;
   }, [products, searchQuery]);
 
   return (
@@ -28,8 +22,8 @@ const AllProducts = () => {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-6 lg:grid-cols-5 mt-6">
         {filteredProducts.filter((product) => product.isStock)
-          .map((product, index) => (
-            <ProductCard key={index} product={product}/>
+          .map((product) => (
+            <ProductCard key={product._id} product={product}/>
           ))}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAppContext } from "../context/AppContext";
 import { Link, useParams } from "react-router-dom";
 import { assets } from "../assets/assets";
@@ -8,24 +8,19 @@ const ProductDetails = () => {
   const { products, navigate, currency, addToCart } = useAppContext();
   const { id } = useParams();
 
-  const [relatedProducts, setRelatedProducts] = useState([]);
-  const [thumbnail, setThumbnail] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const product = products.find((item) => item._id === id);
 
-  useEffect(() => {
-    if (products.length > 0 && product) {
-      let productsCopy = products.slice();
-      productsCopy = productsCopy.filter(
-        (item) => product.category === item.category,
-      );
-      setRelatedProducts(productsCopy.slice(0, 5));
-    }
-  }, [products, product]);
+  const relatedProducts = product
+    ? products
+        .filter((item) => item.category === product.category && item._id !== product._id && item.isStock)
+        .slice(0, 5)
+    : [];
 
-  useEffect(() => {
-    setThumbnail(product?.image[0] ? product.image[0] : null);
-  }, [product]);
+  // Fall back to the first image when nothing (or an image of another product) is selected
+  const thumbnail =
+    product && product.image.includes(selectedImage) ? selectedImage : product?.image[0];
 
   return (
     product && (
@@ -45,7 +40,7 @@ const ProductDetails = () => {
               {product.image.map((image, index) => (
                 <div
                   key={index}
-                  onClick={() => setThumbnail(image)}
+                  onClick={() => setSelectedImage(image)}
                   className="border max-w-24 border-gray-500/30 rounded overflow-hidden cursor-pointer"
                 >
                   <img src={image} alt={`Thumbnail ${index + 1}`} />
@@ -70,6 +65,7 @@ const ProductDetails = () => {
                 .fill("")
                 .map((_, i) => (
                   <img
+                    key={i}
                     src={i < 4 ? assets.star_icon : assets.star_dull_icon}
                     alt=""
                     className="md:w-4 w-3.5"
@@ -84,7 +80,7 @@ const ProductDetails = () => {
                 {product.price}
               </p>
               <p className="text-2xl font-medium">
-                MRP: {currency}
+                Price: {currency}
                 {product.offerPrice}
               </p>
               <span className="text-gray-500/70">(inclusive of all taxes)</span>
@@ -122,8 +118,8 @@ const ProductDetails = () => {
                 <div className="w-20 h-0.5 bg-primary rounded-full mt-2"></div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 md:gap-6 lg:grid-cols-5 mt-6 w-full">
-                {relatedProducts.filter((product) => product.isStock).map((product,index) => (
-                    <ProductCard key={index} product={product} />
+                {relatedProducts.map((item) => (
+                    <ProductCard key={item._id} product={item} />
                 ))}
             </div>
             <button onClick={()=> {navigate('/products'); scrollTo(0,0)

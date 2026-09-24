@@ -12,11 +12,12 @@ const Loading = () => {
 
     useEffect(()=>{
         if(nextUrl){
-            setTimeout(()=>{
+            const timer = setTimeout(()=>{
                 navigate(`/${nextUrl}`)
             },5000)
+            return () => clearTimeout(timer)
         }
-    },[nextUrl])
+    },[nextUrl, navigate])
 
 
   return (
