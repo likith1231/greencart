@@ -1,0 +1,8 @@
+# Environment files hold secrets - never commit them
+.env
+.env.local
+.env.*.local
+server/.env
+client/.env
+
+node_modules

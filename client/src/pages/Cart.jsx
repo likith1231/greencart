@@ -92,7 +92,8 @@ try {
     },[user, axios])
 
     const cartAmount = getCartAmount()
-    const taxAmount = Math.floor(cartAmount * 0.02 * 100) / 100
+    // 2% tax rounded down to the cent - must match the server's calculation
+    const taxAmount = Math.floor(Math.round(cartAmount * 100) * 2 / 100) / 100
 
 
     return products.length > 0 && cartItems ? (

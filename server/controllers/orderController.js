@@ -22,10 +22,12 @@ const buildOrderItems = async (items) => {
         amount += product.offerPrice * item.quantity;
     }
 
-    //Add Tax Charge (2%)
-    amount += Math.floor(amount * 0.02);
+    //Add Tax Charge (2%), rounded down to the cent - same formula as the cart page
+    const subtotalCents = Math.round(amount * 100);
+    const taxCents = Math.floor(subtotalCents * 2 / 100);
+    amount = (subtotalCents + taxCents) / 100;
 
-    return { amount, productData };
+    return { amount, productData, taxCents };
 };
 
 //Place Order COD: /api/order/cod
@@ -69,7 +71,7 @@ export const placeOrderStripe = async (req, res) => {
             return res.json({ success: false, message: "Invalid data"});
         }
 
-        const { amount, productData } = await buildOrderItems(items);
+        const { amount, productData, taxCents } = await buildOrderItems(items);
 
         const order = await Order.create({
             userId,
@@ -89,10 +91,22 @@ export const placeOrderStripe = async (req, res) => {
                     name: item.name,
                 },
                 // Stripe expects an integer amount in cents
-                unit_amount: Math.round(item.price * 1.02 * 100),
+                unit_amount: Math.round(item.price * 100),
             },
             quantity: item.quantity,
         }));
+
+        // Charge tax as its own line so the Stripe total equals the order amount exactly
+        if (taxCents > 0) {
+            line_items.push({
+                price_data: {
+                    currency: "usd",
+                    product_data: { name: "Tax (2%)" },
+                    unit_amount: taxCents,
+                },
+                quantity: 1,
+            });
+        }
 
         const session = await stripeInstance.checkout.sessions.create({
             line_items,
@@ -131,6 +145,22 @@ export const stripeWebhooks = async (request, response) => {
 
     try {
         switch (event.type) {
+            // Checkout session events carry our metadata directly
+            case "checkout.session.completed": {
+                const { orderId, userId } = event.data.object.metadata || {};
+                if (orderId && event.data.object.payment_status === "paid") {
+                    await Order.findByIdAndUpdate(orderId, { isPaid: true });
+                    await User.findByIdAndUpdate(userId, { cartItems: {} });
+                }
+                break;
+            }
+            case "checkout.session.expired": {
+                const { orderId } = event.data.object.metadata || {};
+                if (orderId) {
+                    await Order.findOneAndDelete({ _id: orderId, isPaid: false });
+                }
+                break;
+            }
             case "payment_intent.succeeded": {
                 const paymentIntentId = event.data.object.id;
 

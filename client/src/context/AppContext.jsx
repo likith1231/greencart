@@ -22,6 +22,16 @@ axios.interceptors.request.use((config) => {
     return config;
 });
 
+// Show the server's own error message (e.g. "Database connection failed: ...")
+// instead of a generic "Request failed with status code 503"
+axios.interceptors.response.use(undefined, (error) => {
+    const serverMessage = error.response?.data?.message;
+    if (serverMessage) {
+        error.message = serverMessage;
+    }
+    return Promise.reject(error);
+});
+
 const AppContext = createContext();
 
 export const AppContextProvider = ({ children }) => {

@@ -34,7 +34,7 @@ const MyOrders = () => {
           md:font-medium max-md:flex-col'>
             <span>OrderId : {order._id}</span>
             <span>Payment : {order.paymentType}</span>
-            <span>Total Amount : {currency}{order.amount}</span>
+            <span>Total Amount : {currency}{Number(order.amount).toFixed(2)}</span>
           </p>
           {order.items.filter((item) => item.product).map((item, index, items) => (
             <div key={index}
@@ -57,7 +57,7 @@ const MyOrders = () => {
                 <p>Date: {new Date(order.createdAt).toLocaleDateString()}</p>
               </div>
 
-              <p className='text-primary text-lg font-medium'>Amount: {currency}{item.product.offerPrice * item.quantity}</p>
+              <p className='text-primary text-lg font-medium'>Amount: {currency}{(item.product.offerPrice * item.quantity).toFixed(2)}</p>
 
             </div>
           ))}

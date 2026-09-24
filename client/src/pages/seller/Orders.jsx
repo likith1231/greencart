@@ -47,7 +47,7 @@ const Orders = () => {
               <p>{order.address.phone}</p>
             </div>}
 
-            <p className="font-medium text-lg my-auto">{currency}{order.amount}</p>
+            <p className="font-medium text-lg my-auto">{currency}{Number(order.amount).toFixed(2)}</p>
 
             <div className="flex flex-col text-sm">
               <p>Method: {order.paymentType}</p>
