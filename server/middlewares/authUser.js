@@ -21,16 +21,12 @@ const authUser = async (req, res, next) => {
         if (tokenDecode.id) {
             // Store userId in request object for use in controllers
             req.userId = tokenDecode.id;
-            // Also set in body for backward compatibility with existing controllers
-            if (req.body) {
-                req.body.userId = tokenDecode.id;
-            }
             next();
         } else {
             return res.json({ success: false, message: "Not Authorized" });
         }
     } catch (error) {
-        res.json({ success: false, message: error.message });
+        return res.json({ success: false, message: error.message });
     }
 };
 

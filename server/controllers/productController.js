@@ -1,6 +1,5 @@
 import Product from "../models/product.js";
-// import cloudinary from "../configs/cloudinary.js";
-import {v2 as cloudinary} from "cloudinary"
+import { v2 as cloudinary } from "cloudinary";
 
 
 //Add Product : /api/product/add
@@ -8,7 +7,11 @@ export const addProduct = async (req, res) => {
     try {
         let productData = JSON.parse(req.body.productData);
 
-        const images = req.files;
+        const images = req.files || [];
+
+        if (images.length === 0) {
+            return res.json({ success: false, message: "Please upload at least one image" });
+        }
 
         let imagesUrl = await Promise.all(
             images.map(async (item) => {
@@ -42,8 +45,12 @@ export const productList = async (req, res) => {
 //Get Single Product : /api/product/id
 export const productById = async (req, res) => {
     try {
-        const { id } = req.body;
+        const id = req.query.id || req.body?.id;
         const product = await Product.findById(id);
+
+        if (!product) {
+            return res.json({ success: false, message: "Product not found" });
+        }
 
         res.json({ success: true, product });
     } catch (error) {
@@ -52,11 +59,11 @@ export const productById = async (req, res) => {
     }
 };
 
-//Change Product inStock : /api/product/stock
+//Change Product isStock : /api/product/stock
 export const changeStock = async (req, res) => {
     try {
-        const { id, inStock } = req.body;
-        await Product.findByIdAndUpdate(id, { inStock });
+        const { id, isStock } = req.body;
+        await Product.findByIdAndUpdate(id, { isStock });
         res.json({ success: true, message: 'Stock Updated'});
     } catch (error) {
         console.log("error occurring  product inStock : ", error.message);

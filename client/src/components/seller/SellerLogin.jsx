@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import toast from 'react-hot-toast';
-import axios from 'axios';
 
 const SellerLogin = () => {
   const { isSeller, setIsSeller, navigate, axios } = useAppContext();
@@ -11,15 +10,12 @@ const SellerLogin = () => {
   const onSubmitHandler = async (event) => {
     try {
       event.preventDefault();
-      console.log("email : ", email);
-      console.log("password: ", password);
       const { data } = await axios.post("/api/seller/login", {email, password});
 
       if(data.success) {
-        // Store token in localStorage and update axios headers
+        // Store token in localStorage (sent with seller requests by the axios interceptor)
         if (data.token) {
           localStorage.setItem('sellerToken', data.token);
-          axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
         }
         setIsSeller(true);
         navigate("/seller")
@@ -37,7 +33,7 @@ const SellerLogin = () => {
     if (isSeller) {
       navigate("/seller");
     }
-  }, [isSeller]);
+  }, [isSeller, navigate]);
 
   return !isSeller && (
     <form onSubmit={onSubmitHandler} className='min-h-screen flex items-center text-sm

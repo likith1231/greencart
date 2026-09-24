@@ -5,8 +5,6 @@ import toast from "react-hot-toast";
 
 const AddProduct = () => {
 
-  console.log("add product");
-
   const [files, setFiles] = useState([]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -20,20 +18,24 @@ const AddProduct = () => {
     try {
       e.preventDefault();
 
+      if (files.filter(Boolean).length === 0) {
+        return toast.error("Please upload at least one image");
+      }
+
       const productData = {
         name,
-        description: description.split('/n'),
+        description: description.split('\n').filter((line) => line.trim() !== ''),
         category,
-        price,
-        offerPrice
+        price: Number(price),
+        offerPrice: Number(offerPrice)
       };
 
       const formData = new FormData();
       formData.append('productData', JSON.stringify(productData));
 
-      for (let i = 0; i < files.length; i++) {
-        formData.append('images', files[i]);
-      }
+      files.filter(Boolean).forEach((file) => {
+        formData.append('images', file);
+      });
 
       const { data } = await axios.post("/api/product/add", formData);
 
@@ -88,7 +90,7 @@ const AddProduct = () => {
         </div>
         <div className="w-full flex flex-col gap-1">
           <label className="text-base font-medium" htmlFor="category">Category</label>
-          <select onChange={e => setCategory(e.target.value)} value={category} id="category" className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40">
+          <select onChange={e => setCategory(e.target.value)} value={category} id="category" required className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40">
             <option value="">Select Category</option>
             {categories.map((item, index) => (
               <option key={index} value={item.path}>{item.path}</option>
@@ -98,11 +100,11 @@ const AddProduct = () => {
         <div className="flex items-center gap-5 flex-wrap">
           <div className="flex-1 flex flex-col gap-1 w-32">
             <label className="text-base font-medium" htmlFor="product-price">Product Price</label>
-            <input onChange={e => setPrice(e.target.value)} value={price} id="product-price" type="text" className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40" required />
+            <input onChange={e => setPrice(e.target.value)} value={price} id="product-price" type="number" min="0" step="0.01" className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40" required />
           </div>
           <div className="flex-1 flex flex-col gap-1 w-32">
             <label className="text-base font-medium" htmlFor="offer-price">Offer Price</label>
-            <input onChange={e => setOfferPrice(e.target.value)} value={offerPrice} id="offer-price" type="text" className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40" required />
+            <input onChange={e => setOfferPrice(e.target.value)} value={offerPrice} id="offer-price" type="number" min="0" step="0.01" className="outline-none md:py-2.5 py-2 px-3 rounded border border-gray-500/40" required />
           </div>
         </div>
         <button className="px-8 py-2.5 bg-primary text-white font-medium rounded cursor-pointer">ADD</button>

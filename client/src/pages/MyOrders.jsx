@@ -1,33 +1,26 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../context/AppContext';
-import { dummyOrders } from '../assets/assets';
+import toast from 'react-hot-toast';
 
 const MyOrders = () => {
 
   const [myOrders, setMyOrders] = useState([]);
   const {currency, axios, user} = useAppContext();
   
-  const fetchMyOrders = async () => {
-    try {
-        console.log('Fetching orders...');
-        console.log('Token:', localStorage.getItem('token'));
-        const {data} = await axios.get('/api/order/user')
-        console.log('Order response:', data);
+  useEffect(() => {
+    if(!user){
+      return;
+    }
+    axios.get('/api/order/user')
+      .then(({data}) => {
         if(data.success){
           setMyOrders(data.orders)
         } else {
-          console.log('Error:', data.message);
+          toast.error(data.message)
         }
-    } catch (error) {
-      console.log('Error fetching orders:', error);
-    }
-  }
-
-  useEffect(() => {
-    if(user){
-        fetchMyOrders();
-    }
-  }, [user]);
+      })
+      .catch((error) => toast.error(error.message));
+  }, [user, axios]);
 
   return (
     <div className='mt-16 pb-16'>
@@ -43,10 +36,10 @@ const MyOrders = () => {
             <span>Payment : {order.paymentType}</span>
             <span>Total Amount : {currency}{order.amount}</span>
           </p>
-          {order.items.map((item, index) => (
+          {order.items.filter((item) => item.product).map((item, index, items) => (
             <div key={index}
             className={`relative bg-white text-gray-500/70 ${
-              order.items.length !== index + 1 && "border-b"
+              items.length !== index + 1 ? "border-b" : ""
             } border-gray-300 flex flex-col md:flex-row md:items-center justify-between p-4 py-5 md:gap-16 w-full max-w-4xl`}>
               <div className='flex items-center my-4 md:my-0'>
                 <div className='bg-primary/10 p-4 rounded-lg'>

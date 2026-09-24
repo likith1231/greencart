@@ -25,7 +25,7 @@ const authSeller = async (req, res, next)=>{
             }
 
         } catch (error) {
-            res.json({ success: false, message: error.message });
+            return res.json({ success: false, message: error.message });
         }
 }
 

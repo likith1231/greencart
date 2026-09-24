@@ -1,6 +1,5 @@
 import React from "react";
 import { assets } from "../assets/assets";
-import { useActionData } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 
 const ProductCard = ({ product }) => {

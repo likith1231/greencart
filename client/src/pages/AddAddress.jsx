@@ -58,9 +58,9 @@ const AddAddress = () => {
 
     useEffect(()=>{
         if(!user){
-        navigate('/cart')
+            navigate('/cart')
         }
-    })
+    }, [user, navigate])
 
   return (
     <div className='mt-16 pb-16'>
@@ -98,7 +98,7 @@ const AddAddress = () => {
 
                 </form>
             </div>
-            <img className='md:mr-16 md-16 md:mt-0' src={assets.add_address_iamge}alt="Add Address" />
+            <img className='md:mr-16 mb-16 md:mt-0' src={assets.add_address_iamge} alt="Add Address" />
             
         </div>
     </div>
