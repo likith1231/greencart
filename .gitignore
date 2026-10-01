@@ -1,0 +1,6 @@
+# Secrets: keep real values only in local .env files and in Vercel's settings
+.env
+.env.*
+!.env.example
+
+node_modules
