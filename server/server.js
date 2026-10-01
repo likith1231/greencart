@@ -60,6 +60,7 @@ app.get('/', async (req, res) => {
     api: 'working',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'not connected',
     databaseError: dbError,
+    sellerLoginConfigured: Boolean(process.env.SELLER_EMAIL && process.env.SELLER_PASSWORD),
     // Only shown while disconnected, to spot typos in MONGODB_URI without revealing the password
     ...(mongoose.connection.readyState !== 1 && { connectionInfo: describeMongoUri(process.env.MONGODB_URI) }),
   });

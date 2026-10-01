@@ -7,7 +7,7 @@ axios.defaults.withCredentials = true;
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL;
 
 // Endpoints that need the seller token instead of the user token
-const SELLER_ENDPOINTS = ['/api/seller', '/api/product/add', '/api/product/stock', '/api/order/seller'];
+const SELLER_ENDPOINTS = ['/api/seller', '/api/product/add', '/api/product/bulk-add', '/api/product/stock', '/api/order/seller'];
 
 // Attach the right token to every request, read fresh from localStorage each time,
 // so a seller login never overwrites the user's Authorization header (and vice versa)

@@ -1,10 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import toast from 'react-hot-toast';
+import { dummyProducts } from '../../assets/assets';
 
 const ProductList = () => {
 
   const { products, currency, axios, fetchProducts } = useAppContext();
+  const [loadingDemo, setLoadingDemo] = useState(false);
+
+  // Saves the demo catalogue from assets.js into the database, using the images bundled with this site
+  const loadDemoProducts = async () => {
+    setLoadingDemo(true);
+    try {
+      const demoProducts = dummyProducts.map(({ name, description, price, offerPrice, image, category }) => ({
+        name, description, price, offerPrice, category,
+        image: image.map((src) => new URL(src, window.location.origin).href),
+      }));
+      const { data } = await axios.post('/api/product/bulk-add', { products: demoProducts });
+      if (data.success) {
+        fetchProducts();
+        toast.success(data.message);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
+    setLoadingDemo(false);
+  };
 
   const toggleStock = async (id, isStock) => {
     try {
@@ -24,7 +47,16 @@ const ProductList = () => {
   return (
     <div className="no-scrollbar flex-1 h-[95vh] overflow-y-scroll flex flex-col justify-between">
       <div className="w-full md:p-10 p-4">
-        <h2 className="pb-4 text-lg font-medium">All Products</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 max-w-4xl">
+          <h2 className="text-lg font-medium">All Products ({products.length})</h2>
+          <button
+            onClick={loadDemoProducts}
+            disabled={loadingDemo}
+            className="px-4 py-2 text-sm border border-primary text-primary rounded hover:bg-primary/10 transition cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+          >
+            {loadingDemo ? "Adding..." : "Load demo products"}
+          </button>
+        </div>
         <div className="flex flex-col items-center max-w-4xl w-full overflow-hidden rounded-md bg-white border border-gray-500/20">
           <table className="md:table-auto table-fixed w-full overflow-hidden">
             <thead className="text-gray-900 text-sm text-left">
