@@ -75,6 +75,40 @@ export const placeOrderCOD = async (req, res) => {
     }
 };
 
+// Create a Stripe Checkout page for an order and return the session
+const createCheckoutSession = async ({ productData, tax, origin, cancelPath, metadata }) => {
+    const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+
+    // Stripe expects integer amounts in cents
+    const line_items = productData.map((item) => ({
+        price_data: {
+            currency: "usd",
+            product_data: { name: item.name },
+            unit_amount: Math.round(item.price * 100),
+        },
+        quantity: item.quantity,
+    }));
+
+    if (tax > 0) {
+        line_items.push({
+            price_data: {
+                currency: "usd",
+                product_data: { name: "Tax (2%)" },
+                unit_amount: Math.round(tax * 100),
+            },
+            quantity: 1,
+        });
+    }
+
+    return stripeInstance.checkout.sessions.create({
+        line_items,
+        mode: "payment",
+        success_url: `${origin}/loader?next=my-orders`,
+        cancel_url: `${origin}${cancelPath}`,
+        metadata,
+    });
+};
+
 //Place Order Stripe: /api/order/stripe
 export const placeOrderStripe = async (req, res) => {
     try {
@@ -87,38 +121,12 @@ export const placeOrderStripe = async (req, res) => {
         // Saved only after Stripe accepts the session, so failed checkouts leave no stray orders
         const order = new Order({ ...orderFields, paymentType: "Online", isPaid: false });
 
-        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
-
-        // Stripe expects integer amounts in cents
-        const line_items = productData.map((item) => ({
-            price_data: {
-                currency: "usd",
-                product_data: { name: item.name },
-                unit_amount: Math.round(item.price * 100),
-            },
-            quantity: item.quantity,
-        }));
-
-        if (tax > 0) {
-            line_items.push({
-                price_data: {
-                    currency: "usd",
-                    product_data: { name: "Tax (2%)" },
-                    unit_amount: Math.round(tax * 100),
-                },
-                quantity: 1,
-            });
-        }
-
-        const session = await stripeInstance.checkout.sessions.create({
-            line_items,
-            mode: "payment",
-            success_url: `${origin}/loader?next=my-orders`,
-            cancel_url: `${origin}/cart`,
-            metadata: {
-                orderId: order._id.toString(),
-                userId,
-            }
+        const session = await createCheckoutSession({
+            productData,
+            tax,
+            origin,
+            cancelPath: "/cart",
+            metadata: { orderId: order._id.toString(), userId },
         });
 
         await order.save();
@@ -126,6 +134,54 @@ export const placeOrderStripe = async (req, res) => {
         return res.json({ success: true, url: session.url });
     } catch (error) {
         console.log("error ordering product : ", error.message);
+        return res.json({ success: false, message: error.message });
+    }
+};
+
+//Pay online for an existing unpaid (Cash on Delivery) order: /api/order/pay
+export const payExistingOrder = async (req, res) => {
+    try {
+        const userId = req.userId;
+        const { orderId } = req.body;
+        const { origin } = req.headers;
+
+        const order = await Order.findOne({ _id: orderId, userId }).populate("items.product");
+
+        if (!order) {
+            return res.json({ success: false, message: "Order not found" });
+        }
+        if (order.isPaid) {
+            return res.json({ success: false, message: "This order is already paid" });
+        }
+
+        // Older orders didn't save prices, so fall back to the product's current price
+        const productData = order.items
+            .filter((item) => item.product)
+            .map((item) => ({
+                name: item.product.name,
+                price: item.price ?? item.product.offerPrice,
+                quantity: item.quantity,
+            }));
+
+        if (productData.length === 0) {
+            return res.json({ success: false, message: "The products in this order are no longer available" });
+        }
+
+        const subtotal = productData.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const tax = order.tax ?? Math.max(toCents(order.amount - subtotal), 0);
+
+        const session = await createCheckoutSession({
+            productData,
+            tax,
+            origin,
+            cancelPath: "/my-orders",
+            // payLater tells the webhook not to clear the cart or delete the order on failure
+            metadata: { orderId: order._id.toString(), userId, payLater: "true" },
+        });
+
+        return res.json({ success: true, url: session.url });
+    } catch (error) {
+        console.log("error paying for order : ", error.message);
         return res.json({ success: false, message: error.message });
     }
 };
@@ -156,10 +212,14 @@ export const stripeWebhooks = async (request, response) => {
                     payment_intent: paymentIntentId,
                 });
 
-                const { orderId, userId } = session.data[0].metadata;
+                const { orderId, userId, payLater } = session.data[0].metadata;
 
-                await Order.findByIdAndUpdate(orderId, { isPaid: true });
-                await User.findByIdAndUpdate(userId, { cartItems: {} });
+                await Order.findByIdAndUpdate(orderId, { isPaid: true, paymentType: "Online" });
+
+                // Paying later for an old order must not empty the customer's current cart
+                if (payLater !== "true") {
+                    await User.findByIdAndUpdate(userId, { cartItems: {} });
+                }
                 break;
             }
             case "payment_intent.payment_failed": {
@@ -169,8 +229,12 @@ export const stripeWebhooks = async (request, response) => {
                     payment_intent: paymentIntentId,
                 });
 
-                const { orderId } = session.data[0].metadata;
-                await Order.findByIdAndDelete(orderId);
+                const { orderId, payLater } = session.data[0].metadata;
+
+                // A failed later payment keeps the Cash on Delivery order as it was
+                if (payLater !== "true") {
+                    await Order.findByIdAndDelete(orderId);
+                }
                 break;
             }
             default:
