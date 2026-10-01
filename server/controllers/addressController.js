@@ -22,3 +22,42 @@ export const getAddress = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
+
+//Update Address: /api/address/update
+export const updateAddress = async (req, res) => {
+    try {
+        const { id, address } = req.body;
+        // Never let the request change who owns the address
+        const { _id, userId, ...fields } = address || {};
+
+        const updated = await Address.findOneAndUpdate(
+            { _id: id, userId: req.userId },
+            fields,
+            { new: true, runValidators: true }
+        );
+
+        if (!updated) {
+            return res.json({ success: false, message: "Address not found" });
+        }
+        res.json({ success: true, message: "Address updated successfully" });
+    } catch (error) {
+        console.log("error updating address : ", error.message);
+        res.json({ success: false, message: error.message });
+    }
+};
+
+//Delete Address: /api/address/delete
+export const deleteAddress = async (req, res) => {
+    try {
+        const { id } = req.body;
+        const deleted = await Address.findOneAndDelete({ _id: id, userId: req.userId });
+
+        if (!deleted) {
+            return res.json({ success: false, message: "Address not found" });
+        }
+        res.json({ success: true, message: "Address deleted" });
+    } catch (error) {
+        console.log("error deleting address : ", error.message);
+        res.json({ success: false, message: error.message });
+    }
+};
