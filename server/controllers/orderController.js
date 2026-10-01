@@ -2,30 +2,58 @@ import Order from "../models/Order.js"
 import Product from "../models/product.js";
 import stripe from "stripe";
 import User from "../models/User.js";
+import Address from "../models/Address.js";
 
 
-// Look up every ordered product and build the order total (including 2% tax)
-const buildOrderItems = async (items) => {
-    let amount = 0;
+// Round to whole cents
+const toCents = (value) => Math.round(value * 100) / 100;
+
+// Look up every ordered product, the user's delivery address and the order total.
+// Tax is 2% rounded down to the cent, the same way the cart page shows it.
+const buildOrder = async (userId, items, addressId) => {
+    if (!addressId || !Array.isArray(items) || items.length === 0) {
+        throw new Error("Invalid data");
+    }
+
+    const address = await Address.findOne({ _id: addressId, userId });
+    if (!address) {
+        throw new Error("Please select a valid delivery address");
+    }
+
+    let subtotal = 0;
+    const orderItems = [];
     const productData = [];
 
     for (const item of items) {
+        const quantity = Number(item.quantity);
+        if (!Number.isInteger(quantity) || quantity < 1) {
+            throw new Error("Invalid quantity");
+        }
         const product = await Product.findById(item.product);
         if (!product) {
             throw new Error("Some products in your cart are no longer available");
         }
-        productData.push({
-            name: product.name,
-            price: product.offerPrice,
-            quantity: item.quantity,
-        });
-        amount += product.offerPrice * item.quantity;
+        orderItems.push({ product: item.product, quantity, price: product.offerPrice });
+        productData.push({ name: product.name, price: product.offerPrice, quantity });
+        subtotal += product.offerPrice * quantity;
     }
 
-    //Add Tax Charge (2%)
-    amount += Math.floor(amount * 0.02);
+    subtotal = toCents(subtotal);
+    const tax = Math.floor(subtotal * 0.02 * 100) / 100;
 
-    return { amount, productData };
+    return {
+        orderFields: {
+            userId,
+            items: orderItems,
+            subtotal,
+            tax,
+            amount: toCents(subtotal + tax),
+            address: addressId,
+            shippingAddress: address.toObject(),
+        },
+        productData,
+        tax,
+    };
 };
 
 //Place Order COD: /api/order/cod
@@ -34,20 +62,9 @@ export const placeOrderCOD = async (req, res) => {
         const userId = req.userId;
         const { items, address } = req.body;
 
-        if (!address || !Array.isArray(items) || items.length === 0) {
-            return res.json({ success: false, message: "Invalid data"});
-        }
+        const { orderFields } = await buildOrder(userId, items, address);
 
-        const { amount } = await buildOrderItems(items);
-
-        await Order.create({
-            userId,
-            items,
-            amount,
-            address,
-            paymentType: "COD",
-            isPaid: false
-        });
+        await Order.create({ ...orderFields, paymentType: "COD", isPaid: false });
 
         await User.findByIdAndUpdate(userId, { cartItems: {} });
 
@@ -65,34 +82,33 @@ export const placeOrderStripe = async (req, res) => {
         const { items, address } = req.body;
         const { origin } = req.headers;
 
-        if (!address || !Array.isArray(items) || items.length === 0) {
-            return res.json({ success: false, message: "Invalid data"});
-        }
+        const { orderFields, productData, tax } = await buildOrder(userId, items, address);
 
-        const { amount, productData } = await buildOrderItems(items);
-
-        const order = await Order.create({
-            userId,
-            items,
-            amount,
-            address,
-            paymentType: "Online",
-            isPaid: false
-        });
+        // Saved only after Stripe accepts the session, so failed checkouts leave no stray orders
+        const order = new Order({ ...orderFields, paymentType: "Online", isPaid: false });
 
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
 
+        // Stripe expects integer amounts in cents
         const line_items = productData.map((item) => ({
             price_data: {
                 currency: "usd",
-                product_data: {
-                    name: item.name,
-                },
-                // Stripe expects an integer amount in cents
-                unit_amount: Math.round(item.price * 1.02 * 100),
+                product_data: { name: item.name },
+                unit_amount: Math.round(item.price * 100),
             },
             quantity: item.quantity,
         }));
+
+        if (tax > 0) {
+            line_items.push({
+                price_data: {
+                    currency: "usd",
+                    product_data: { name: "Tax (2%)" },
+                    unit_amount: Math.round(tax * 100),
+                },
+                quantity: 1,
+            });
+        }
 
         const session = await stripeInstance.checkout.sessions.create({
             line_items,
@@ -104,6 +120,8 @@ export const placeOrderStripe = async (req, res) => {
                 userId,
             }
         });
+
+        await order.save();
 
         return res.json({ success: true, url: session.url });
     } catch (error) {

@@ -73,6 +73,27 @@ try {
 }
     }
 
+    const deleteAddress = async (addressId) => {
+        if(!window.confirm("Delete this address?")){
+            return
+        }
+        try {
+            const {data} = await axios.post('/api/address/delete', {id: addressId})
+            if(data.success){
+                const remaining = addresses.filter((address) => address._id !== addressId)
+                setAddresses(remaining)
+                if(selectedAddress?._id === addressId){
+                    setSelectedAddress(remaining[0] || null)
+                }
+                toast.success(data.message)
+            }else{
+                toast.error(data.message)
+            }
+        } catch (error) {
+            toast.error(error.message)
+        }
+    }
+
     useEffect(()=>{
         if(!user){
             return
@@ -151,16 +172,30 @@ try {
                 <div className="mb-6">
                     <p className="text-sm font-medium uppercase">Delivery Address</p>
                     <div className="relative flex justify-between items-start mt-2">
-                        <p className="text-gray-500">{selectedAddress ? `${selectedAddress.street}, ${selectedAddress.city}, ${selectedAddress.state}, ${selectedAddress.country}`:"No address found"} </p>
+                        {selectedAddress ? (
+                            <div className="text-gray-500">
+                                <p className="text-gray-700">{selectedAddress.firstName} {selectedAddress.lastName}</p>
+                                <p>{selectedAddress.street}, {selectedAddress.city}, {selectedAddress.state} {selectedAddress.zipcode}, {selectedAddress.country}</p>
+                                <p>{selectedAddress.phone}</p>
+                            </div>
+                        ) : (
+                            <p className="text-gray-500">No address found</p>
+                        )}
                         <button onClick={() => setShowAddress(!showAddress)} className="text-primary hover:underline cursor-pointer">
                             Change
                         </button>
                         {showAddress && (
-                            <div className="absolute top-12 py-1 bg-white border border-gray-300 text-sm w-full">
+                            <div className="absolute top-full mt-2 z-10 py-1 bg-white border border-gray-300 text-sm w-full">
                                {addresses.map((address) => (
-                                    <p key={address._id} onClick={() => {setSelectedAddress(address); setShowAddress(false)}} className="text-gray-500 p-2 hover:bg-gray-100 cursor-pointer">
-                                        {address.street}, {address.city}, {address.state}, {address.country}
-                                    </p>
+                                    <div key={address._id} className="flex items-start justify-between gap-2 p-2 hover:bg-gray-100">
+                                        <p onClick={() => {setSelectedAddress(address); setShowAddress(false)}} className="text-gray-500 cursor-pointer flex-1">
+                                            {address.street}, {address.city}, {address.state}, {address.country}
+                                        </p>
+                                        <div className="flex gap-2 text-xs shrink-0">
+                                            <button onClick={() => navigate(`/add-address?id=${address._id}`)} className="text-primary hover:underline cursor-pointer">Edit</button>
+                                            <button onClick={() => deleteAddress(address._id)} className="text-red-500 hover:underline cursor-pointer">Delete</button>
+                                        </div>
+                                    </div>
                                 ))}
                                 <p onClick={() => navigate("/add-address")} className="text-primary text-center cursor-pointer p-2 hover:bg-primary/10">
                                     Add address
