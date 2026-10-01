@@ -17,7 +17,7 @@ const InputField = ({type, placeholder, name, handleChange, address}) => (
 
 const AddAddress = () => {
 
-    const {axios, user, navigate } = useAppContext()
+    const {axios, user, navigate, authChecked } = useAppContext()
 
 
     const [address, setAddress] = useState({
@@ -57,10 +57,10 @@ const AddAddress = () => {
     }
 
     useEffect(()=>{
-        if(!user){
+        if(authChecked && !user){
             navigate('/cart')
         }
-    }, [user, navigate])
+    }, [authChecked, user, navigate])
 
   return (
     <div className='mt-16 pb-16'>

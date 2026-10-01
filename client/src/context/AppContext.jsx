@@ -30,6 +30,8 @@ export const AppContextProvider = ({ children }) => {
 
     const navigate = useNavigate();
     const [user, setUser] = useState(null);
+    // True once the initial login check has finished, so pages don't redirect too early
+    const [authChecked, setAuthChecked] = useState(false);
     const [isSeller, setIsSeller] = useState(false)
     const [showUserLogin, setShowUserLogin] = useState(false)
     const [products, setProducts] = useState([])
@@ -76,6 +78,8 @@ export const AppContextProvider = ({ children }) => {
             }
         } catch {
             setUser(null)
+        } finally {
+            setAuthChecked(true)
         }
     }
 
@@ -130,7 +134,6 @@ export const AppContextProvider = ({ children }) => {
     };
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data load from the API
         fetchUser()
         fetchSeller()
         fetchProducts()
@@ -157,7 +160,7 @@ export const AppContextProvider = ({ children }) => {
         }
     },[cartItems, user])
 
-    const value = { navigate, user, setUser, isSeller, setIsSeller, showUserLogin, setShowUserLogin, products, currency, addToCart,updateCartItem, removeFromCart, cartItems, searchQuery,setSearchQuery, getCartAmount, getCartCount, axios, fetchProducts, setCartItems };
+    const value = { navigate, user, setUser, authChecked, isSeller, setIsSeller, showUserLogin, setShowUserLogin, products, currency, addToCart,updateCartItem, removeFromCart, cartItems, searchQuery,setSearchQuery, getCartAmount, getCartCount, axios, fetchProducts, setCartItems };
 
     return <AppContext.Provider value={value}>
         {children}
