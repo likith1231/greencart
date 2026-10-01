@@ -70,3 +70,35 @@ export const changeStock = async (req, res) => {
         res.json({ success: false, message: error.message });
     }
 };
+
+//Add many products at once (used to load the demo catalogue) : /api/product/bulk-add
+export const bulkAddProducts = async (req, res) => {
+    try {
+        const { products } = req.body;
+
+        if (!Array.isArray(products) || products.length === 0 || products.length > 200) {
+            return res.json({ success: false, message: "Send between 1 and 200 products" });
+        }
+
+        // Skip products that already exist, so loading twice doesn't create duplicates
+        const existing = new Set((await Product.find({}, { name: 1 })).map((product) => product.name));
+
+        const newProducts = products
+            .filter((product) => product && !existing.has(product.name))
+            .map(({ name, description, price, offerPrice, image, category }) => ({
+                name, description, price, offerPrice, image, category, isStock: true,
+            }));
+
+        if (newProducts.length === 0) {
+            return res.json({ success: true, message: "All these products are already in your store" });
+        }
+
+        // Validates every product against the schema before saving any
+        await Product.insertMany(newProducts);
+
+        res.json({ success: true, message: `Added ${newProducts.length} products` });
+    } catch (error) {
+        console.log("error adding products : ", error.message);
+        res.json({ success: false, message: error.message });
+    }
+};

@@ -5,9 +5,18 @@ import jwt from "jsonwebtoken";
 export const sellerLogin = async (req, res) => {
     try {
         const { email, password } = req.body;
+        const sellerEmail = process.env.SELLER_EMAIL;
+        const sellerPassword = process.env.SELLER_PASSWORD;
 
-        if (password === process.env.SELLER_PASSWORD && email === process.env.SELLER_EMAIL) {
-            const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        if (!sellerEmail || !sellerPassword) {
+            return res.json({ success: false, message: "Seller login is not set up: add SELLER_EMAIL and SELLER_PASSWORD on the server" });
+        }
+
+        // Emails are compared ignoring capital letters and stray spaces
+        const emailMatches = String(email || "").trim().toLowerCase() === sellerEmail.trim().toLowerCase();
+
+        if (emailMatches && password === sellerPassword) {
+            const token = jwt.sign({ email: sellerEmail }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
             res.cookie('sellerToken', token, {
                 httpOnly: true,
