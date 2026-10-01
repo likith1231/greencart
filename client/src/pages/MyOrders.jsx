@@ -55,7 +55,7 @@ const MyOrders = () => {
         const subtotal = order.subtotal ?? items.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0)
         const tax = order.tax ?? Math.max(order.amount - subtotal, 0)
         const address = order.shippingAddress || order.address
-        const paymentStatus = order.isPaid ? "Paid" : order.paymentType === "COD" ? "Pay on delivery" : "Pending"
+        const paymentStatus = order.isPaid ? "Paid" : order.paymentType === "COD" ? "Pay on delivery" : "Payment pending"
 
         return (
         <div key={order._id} className='border border-gray-300 rounded-lg my-10 p-4 py-5 max-w-4xl'>

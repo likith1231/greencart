@@ -103,7 +103,8 @@ const createCheckoutSession = async ({ productData, tax, origin, cancelPath, met
     return stripeInstance.checkout.sessions.create({
         line_items,
         mode: "payment",
-        success_url: `${origin}/loader?next=my-orders`,
+        // Stripe fills in {CHECKOUT_SESSION_ID}, so the return page can confirm the payment
+        success_url: `${origin}/loader?next=my-orders&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${origin}${cancelPath}`,
         metadata,
     });
@@ -186,6 +187,46 @@ export const payExistingOrder = async (req, res) => {
     }
 };
 
+// Mark a Stripe-paid order as paid; shared by the return-page check and the webhook
+const markOrderPaid = async ({ orderId, userId, payLater }) => {
+    await Order.findByIdAndUpdate(orderId, { isPaid: true, paymentType: "Online" });
+
+    // Paying later for an old order must not empty the customer's current cart
+    if (payLater !== "true") {
+        await User.findByIdAndUpdate(userId, { cartItems: {} });
+    }
+};
+
+//Confirm a Stripe payment when the customer returns from checkout: /api/order/verify
+// Works even if the Stripe webhook isn't set up
+export const verifyStripePayment = async (req, res) => {
+    try {
+        const { sessionId } = req.body;
+        if (!sessionId) {
+            return res.json({ success: false, message: "Missing payment session" });
+        }
+
+        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+        const session = await stripeInstance.checkout.sessions.retrieve(sessionId);
+
+        // Only the customer who placed the order can confirm it
+        if (session.metadata?.userId !== req.userId) {
+            return res.json({ success: false, message: "Payment not found" });
+        }
+
+        if (session.payment_status !== "paid") {
+            return res.json({ success: true, paid: false, message: "Payment not completed" });
+        }
+
+        await markOrderPaid(session.metadata);
+
+        return res.json({ success: true, paid: true, payLater: session.metadata.payLater === "true", message: "Payment successful" });
+    } catch (error) {
+        console.log("error verifying payment : ", error.message);
+        return res.json({ success: false, message: error.message });
+    }
+};
+
 //Stripe Webhooks to verify payments: /stripe
 export const stripeWebhooks = async (request, response) => {
     const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
@@ -212,14 +253,7 @@ export const stripeWebhooks = async (request, response) => {
                     payment_intent: paymentIntentId,
                 });
 
-                const { orderId, userId, payLater } = session.data[0].metadata;
-
-                await Order.findByIdAndUpdate(orderId, { isPaid: true, paymentType: "Online" });
-
-                // Paying later for an old order must not empty the customer's current cart
-                if (payLater !== "true") {
-                    await User.findByIdAndUpdate(userId, { cartItems: {} });
-                }
+                await markOrderPaid(session.data[0].metadata);
                 break;
             }
             case "payment_intent.payment_failed": {
@@ -258,10 +292,8 @@ export const getUserOrders = async (req, res) => {
             return res.json({ success: false, message: "User not authenticated" });
         }
         
-        const orders = await Order.find({
-            userId,
-            $or: [ {paymentType: "COD"}, {isPaid: true} ]
-        }).populate("items.product address").sort({createdAt: -1});
+        // Includes unpaid online orders, so customers can see them and finish paying
+        const orders = await Order.find({ userId }).populate("items.product address").sort({createdAt: -1});
 
         res.json({ success: true, orders });
     } catch(error) {
