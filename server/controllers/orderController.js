@@ -176,8 +176,9 @@ export const payExistingOrder = async (req, res) => {
             tax,
             origin,
             cancelPath: "/my-orders",
-            // payLater tells the webhook not to clear the cart or delete the order on failure
-            metadata: { orderId: order._id.toString(), userId, payLater: "true" },
+            // payLater keeps a Cash on Delivery order (and the customer's current cart) untouched if
+            // payment fails or succeeds. A pending online order came from the cart, so it clears it as usual.
+            metadata: { orderId: order._id.toString(), userId, payLater: order.paymentType === "COD" ? "true" : "false" },
         });
 
         return res.json({ success: true, url: session.url });
