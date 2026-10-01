@@ -19,6 +19,22 @@ for (const [key, value] of Object.entries(process.env)) {
   process.env[key] = value.trim().replace(/^(['"])(.*)\1$/, "$2");
 }
 
+// Summarise MONGODB_URI for the health check: everything except the password itself
+const describeMongoUri = (uri) => {
+  const match = /^(mongodb(?:\+srv)?):\/\/([^:@/]*)(?::(.*))?@([^@/?]+)\/?([^?]*)/.exec(uri || "");
+  if (!match) return { valid: false, hint: "MONGODB_URI is missing or not in the form mongodb+srv://user:password@host/database" };
+  const [, scheme, user, password = "", host, database] = match;
+  return {
+    scheme,
+    user,
+    host,
+    database: database || "(none, defaults to test)",
+    passwordLength: password.length,
+    passwordHasAngleBrackets: /[<>]/.test(password),
+    passwordHasSpecialCharacters: /[^A-Za-z0-9%]/.test(password),
+  };
+};
+
 const app = express();
 const port = process.env.PORT || 4000;
 
@@ -44,6 +60,8 @@ app.get('/', async (req, res) => {
     api: 'working',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'not connected',
     databaseError: dbError,
+    // Only shown while disconnected, to spot typos in MONGODB_URI without revealing the password
+    ...(mongoose.connection.readyState !== 1 && { connectionInfo: describeMongoUri(process.env.MONGODB_URI) }),
   });
 });
 
