@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 const MyOrders = () => {
 
   const [myOrders, setMyOrders] = useState([]);
+  const [payingOrderId, setPayingOrderId] = useState(null);
   const {currency, axios, user} = useAppContext();
   
   useEffect(() => {
@@ -21,6 +22,22 @@ const MyOrders = () => {
       })
       .catch((error) => toast.error(error.message));
   }, [user, axios]);
+
+  // Opens Stripe Checkout to pay online for a Cash on Delivery order
+  const payOnline = async (orderId) => {
+    setPayingOrderId(orderId);
+    try {
+      const { data } = await axios.post('/api/order/pay', { orderId });
+      if (data.success) {
+        window.location.replace(data.url);
+        return;
+      }
+      toast.error(data.message);
+    } catch (error) {
+      toast.error(error.message);
+    }
+    setPayingOrderId(null);
+  };
 
   return (
     <div className='mt-16 pb-16'>
@@ -91,6 +108,15 @@ const MyOrders = () => {
               <p className='font-medium text-gray-700 mb-1'>Payment</p>
               <p>Method: {order.paymentType === "COD" ? "Cash on Delivery" : "Online (Card)"}</p>
               <p>Status: <span className={order.isPaid ? 'text-green-600' : 'text-orange-500'}>{paymentStatus}</span></p>
+              {!order.isPaid && (
+                <button
+                  onClick={() => payOnline(order._id)}
+                  disabled={payingOrderId !== null}
+                  className='mt-3 px-5 py-2 bg-primary hover:bg-primary-dull transition text-white rounded cursor-pointer disabled:opacity-60 disabled:cursor-wait'
+                >
+                  {payingOrderId === order._id ? "Opening payment..." : `Pay ${currency}${order.amount.toFixed(2)} Online`}
+                </button>
+              )}
             </div>
 
             <div className='md:min-w-48'>
