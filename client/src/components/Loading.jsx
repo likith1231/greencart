@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 
 const Loading = () => {
 
-    const { navigate, axios, setCartItems } = useAppContext()
+    const { navigate, axios, setCartItems, authChecked } = useAppContext()
     let {search } = useLocation()
     const query = new URLSearchParams(search)
     const nextUrl = query.get('next')
@@ -17,8 +17,13 @@ const Loading = () => {
             return
         }
 
-        // Back from Stripe: confirm the payment ourselves instead of waiting for the webhook
+        // Back from Stripe: confirm the payment ourselves instead of waiting for the webhook.
+        // Wait for the login check first: it loads the saved cart, and finishing after
+        // the payment check would put the old cart back.
         if(sessionId){
+            if(!authChecked){
+                return
+            }
             let cancelled = false
             axios.post('/api/order/verify', { sessionId })
                 .then(({ data }) => {
@@ -44,7 +49,7 @@ const Loading = () => {
             navigate(`/${nextUrl}`)
         },5000)
         return () => clearTimeout(timer)
-    },[nextUrl, sessionId, navigate, axios, setCartItems])
+    },[nextUrl, sessionId, authChecked, navigate, axios, setCartItems])
 
 
   return (
