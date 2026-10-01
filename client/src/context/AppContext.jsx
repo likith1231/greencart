@@ -60,10 +60,11 @@ export const AppContextProvider = ({ children }) => {
             if(data.success){
                 setProducts(data.products)
             }else{
-                toast.error(data.message)
+                // Same id so repeated failures replace the toast instead of stacking
+                toast.error(data.message, { id: 'products-error' })
             }
         } catch (error) {
-            toast.error(error.message)
+            toast.error(error.message, { id: 'products-error' })
         }
     }
 
