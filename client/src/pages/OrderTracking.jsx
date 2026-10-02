@@ -184,7 +184,7 @@ const OrderTracking = () => {
               <p className='text-sm text-gray-500'>{order.status === "Delivered" ? "Delivered your order" : "Your delivery partner"}</p>
             </div>
           </div>
-          {order.status === "Out for Delivery" && (
+          {order.status === "Out for Delivery" && order.deliveryPartner.phone && (
             <a href={`tel:${order.deliveryPartner.phone}`} className='px-4 py-2 text-sm border border-primary text-primary rounded-lg hover:bg-primary/10 transition'>
               📞 Call
             </a>
