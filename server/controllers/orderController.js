@@ -468,13 +468,16 @@ export const stripeWebhooks = async (request, response) => {
     response.json({ received: true });
 };
 
+// Order responses include serverTime so the site's countdown doesn't depend on the
+// customer's device clock being right
+
 //Get Orders by User ID : /api/order/user
 export const getUserOrders = async (req, res) => {
     try {
         // Includes unpaid online orders, so customers can see them and finish paying
         const orders = await Order.find({ userId: req.userId }).populate("items.product address").sort({createdAt: -1});
 
-        res.json({ success: true, orders });
+        res.json({ success: true, orders, serverTime: Date.now() });
     } catch(error) {
         res.json({ success:false, message: error.message });
     }
@@ -488,7 +491,7 @@ export const getOrderDetails = async (req, res) => {
         if (!order) {
             return res.json({ success: false, message: "Order not found" });
         }
-        res.json({ success: true, order });
+        res.json({ success: true, order, serverTime: Date.now() });
     } catch(error) {
         res.json({ success:false, message: error.message });
     }

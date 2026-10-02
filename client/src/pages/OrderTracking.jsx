@@ -25,6 +25,9 @@ const OrderTracking = () => {
   const [order, setOrder] = useState(null)
   const [notFound, setNotFound] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  // Difference between the server's clock and this device's, so a wrong device clock
+  // doesn't break the "Arriving in X min" countdown
+  const [clockOffset, setClockOffset] = useState(0)
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState(CANCEL_REASONS[0])
   const [busy, setBusy] = useState(false)
@@ -34,6 +37,7 @@ const OrderTracking = () => {
       .then(({ data }) => {
         if (data.success) {
           setOrder(data.order)
+          if (data.serverTime) setClockOffset(data.serverTime - Date.now())
         } else {
           setNotFound(true)
         }
@@ -146,7 +150,7 @@ const OrderTracking = () => {
       <div className={`mt-4 rounded-2xl p-5 md:p-6 ${cancelled ? 'bg-red-50' : 'bg-primary/10'}`}>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
-            <p className={`text-2xl md:text-3xl font-semibold ${cancelled ? 'text-red-600' : 'text-gray-800'}`}>{deliveryHeadline(order, now)}</p>
+            <p className={`text-2xl md:text-3xl font-semibold ${cancelled ? 'text-red-600' : 'text-gray-800'}`}>{deliveryHeadline(order, now + clockOffset)}</p>
             {!cancelled && !awaitingPayment && order.status !== "Delivered" && order.estimatedDeliveryAt && (
               <p className='text-gray-600 mt-1'>Expected by {formatTime(order.estimatedDeliveryAt)}</p>
             )}
