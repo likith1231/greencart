@@ -19,6 +19,7 @@ const nextStepOf = (order) => ORDER_STEPS[ORDER_STEPS.indexOf(order.status) + 1]
 const Orders = () => {
   const { currency, axios } = useAppContext();
   const [orders, setOrders] = useState([]);
+  const [autoProgress, setAutoProgress] = useState(false);
   const [filter, setFilter] = useState("Active");
   const [busyOrderId, setBusyOrderId] = useState(null);
   // Order waiting for delivery partner details before going out for delivery
@@ -42,6 +43,7 @@ const Orders = () => {
         }
         knownOrderIds.current = new Set(data.orders.map((order) => order._id))
         setOrders(data.orders)
+        setAutoProgress(Boolean(data.autoProgress))
       })
       .catch((error) => toast.error(error.message, { id: 'seller-orders-error' }));
   }, [axios]);
@@ -104,6 +106,13 @@ const Orders = () => {
       <div className="md:p-10 p-4 space-y-4">
         <h2 className="text-lg font-medium">Orders</h2>
 
+        {autoProgress && (
+          <p className='text-sm text-gray-600 bg-primary/10 border border-primary/30 rounded-md px-4 py-2 max-w-4xl'>
+            ⚡ Demo mode: orders move forward on their own (confirmed after 1 min, packed after 4, out for delivery after 8, delivered after 27).
+            You can still move them faster or cancel them here. Set <code>AUTO_PROGRESS_ORDERS=false</code> on the server to turn this off.
+          </p>
+        )}
+
         <div className='flex gap-2 flex-wrap'>
           {FILTERS.map((name) => (
             <button key={name} onClick={() => setFilter(name)}
@@ -159,7 +168,7 @@ const Orders = () => {
             </div>
 
             {order.deliveryPartner?.name && (
-              <p className='text-sm text-gray-600'>🛵 Delivery partner: {order.deliveryPartner.name} ({order.deliveryPartner.phone})</p>
+              <p className='text-sm text-gray-600'>🛵 Delivery partner: {order.deliveryPartner.name}{order.deliveryPartner.phone ? ` (${order.deliveryPartner.phone})` : ''}</p>
             )}
             {order.status === CANCELLED && (
               <p className='text-sm text-red-600'>

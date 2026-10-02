@@ -3,6 +3,7 @@ import Product from "../models/product.js";
 import stripe from "stripe";
 import User from "../models/User.js";
 import Address from "../models/Address.js";
+import { autoProgressEnabled, autoProgressOrders } from "../utils/autoProgress.js";
 
 
 // Round to whole cents
@@ -474,6 +475,8 @@ export const stripeWebhooks = async (request, response) => {
 //Get Orders by User ID : /api/order/user
 export const getUserOrders = async (req, res) => {
     try {
+        await autoProgressOrders({ userId: req.userId });
+
         // Includes unpaid online orders, so customers can see them and finish paying
         const orders = await Order.find({ userId: req.userId }).populate("items.product address").sort({createdAt: -1});
 
@@ -486,6 +489,8 @@ export const getUserOrders = async (req, res) => {
 //Get one of the customer's orders, for the tracking page : /api/order/details?id=
 export const getOrderDetails = async (req, res) => {
     try {
+        await autoProgressOrders({ _id: req.query.id, userId: req.userId });
+
         const order = await Order.findOne({ _id: req.query.id, userId: req.userId }).populate("items.product address");
 
         if (!order) {
@@ -500,6 +505,8 @@ export const getOrderDetails = async (req, res) => {
 //Status of the customer's orders, polled by the site to show update notifications : /api/order/updates
 export const getOrderUpdates = async (req, res) => {
     try {
+        await autoProgressOrders({ userId: req.userId });
+
         const orders = await Order.find({ userId: req.userId }, { status: 1, isPaid: 1, cancelledBy: 1 }).sort({ createdAt: -1 }).limit(20);
         res.json({ success: true, orders });
     } catch(error) {
@@ -510,10 +517,12 @@ export const getOrderUpdates = async (req, res) => {
 //Get All Orders ( for seller / admin ) : /api/order/seller
 export const getAllOrders = async (req, res) => {
     try {
+        await autoProgressOrders();
+
         const orders = await Order.find({
             $or: [ {paymentType: "COD"}, {isPaid: true} ]
         }).populate("items.product address").sort({createdAt: -1});
-        res.json({ success: true, orders });
+        res.json({ success: true, orders, autoProgress: autoProgressEnabled() });
     } catch(error) {
         res.json({ success:false, message: error.message });
     }

@@ -51,7 +51,7 @@ and follow your order from the store to your door.
 |---|---|
 | ➕ **Product management** | Add products with up to 4 images (stored on Cloudinary) and toggle stock |
 | ⚡ **Demo catalogue** | Load 35 ready-made products with images in one click |
-| 🚚 **Order dispatch** | Move each order through Confirm → Pack → Out for delivery → Delivered |
+| 🚚 **Order dispatch** | Move each order through Confirm → Pack → Out for delivery → Delivered, or let demo mode do it automatically |
 | 🛵 **Delivery partners** | Assign a partner's name and phone when sending an order out |
 | 🔔 **New-order alerts** | Pop-up as soon as a new order comes in |
 | ↩️ **Cancellations** | Cancel with a reason the customer sees; paid orders are refunded |
@@ -177,6 +177,7 @@ npm run server            # starts on http://localhost:4000 with auto-reload
 | `STRIPE_PUBLISHABLE_KEY` | Starts with `pk_test_` | Stripe → Developers → **API keys** |
 | `STRIPE_SECRET_KEY` | Starts with `sk_test_` | Stripe → Developers → **API keys** |
 | `STRIPE_WEBHOOK_SECRET` | Starts with `whsec_` | Stripe → Developers → **Webhooks** (see [Deployment](#-deployment)) |
+| `AUTO_PROGRESS_ORDERS` | *Optional.* Orders move through their steps automatically (demo mode). Set to `false` for a real store | Defaults to on |
 
 > 💡 The MongoDB password is the **database user's** password from Atlas → Database Access.
 > It has nothing to do with the seller password.
@@ -231,17 +232,21 @@ Choose **Online Payment** in the cart and pay with Stripe's test card:
 
 ## 📦 Order lifecycle
 
-Every order moves forward one step at a time. The seller advances it from **Seller → Orders**,
-and the customer's tracking page and notifications update on their own.
+Every order moves forward one step at a time, and the customer's tracking page and notifications update on their own.
+
+> ⚡ **Demo mode (on by default):** orders progress automatically, like a real store working on them —
+> **Confirmed** after 1 min, **Packed** after 4, **Out for Delivery** after 8 (a delivery partner is assigned),
+> **Delivered** after 27. The seller can still move orders faster or cancel them from **Seller → Orders**.
+> Set `AUTO_PROGRESS_ORDERS=false` on the backend to have the seller do every step by hand.
 
 ```mermaid
 stateDiagram-v2
     direction LR
     [*] --> OrderPlaced: Customer places order
-    OrderPlaced --> Confirmed: Seller confirms
-    Confirmed --> Packed: Seller packs
-    Packed --> OutForDelivery: Seller assigns a delivery partner
-    OutForDelivery --> Delivered: Seller marks delivered
+    OrderPlaced --> Confirmed: 1 min / seller confirms
+    Confirmed --> Packed: 4 min / seller packs
+    Packed --> OutForDelivery: 8 min / partner assigned
+    OutForDelivery --> Delivered: 27 min / seller marks delivered
     Delivered --> [*]
 
     OrderPlaced --> Cancelled
@@ -362,7 +367,7 @@ Base URL: `http://localhost:4000` locally, or your deployed backend.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Health check: database status and whether seller login is configured |
+| `GET` | `/` | Health check: database status, whether seller login is configured, and whether demo mode is on |
 | `POST` | `/stripe` | Stripe webhook (signed by Stripe) |
 
 </details>

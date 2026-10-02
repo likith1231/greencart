@@ -4,6 +4,7 @@ import cors from "cors";
 import "dotenv/config"
 import mongoose from "mongoose";
 import connectDB, { dbError } from "./configs/db.js";
+import { autoProgressEnabled } from "./utils/autoProgress.js";
 import userRouter from "./routes/userRoute.js";
 import sellerRouter from "./routes/sellerRoute.js";
 import connectCloudinary from "./configs/cloudinary.js";
@@ -61,6 +62,7 @@ app.get('/', async (req, res) => {
     database: mongoose.connection.readyState === 1 ? 'connected' : 'not connected',
     databaseError: dbError,
     sellerLoginConfigured: Boolean(process.env.SELLER_EMAIL && process.env.SELLER_PASSWORD),
+    autoProgressOrders: autoProgressEnabled(),
     // Only shown while disconnected, to spot typos in MONGODB_URI without revealing the password
     ...(mongoose.connection.readyState !== 1 && { connectionInfo: describeMongoUri(process.env.MONGODB_URI) }),
   });
