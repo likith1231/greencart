@@ -1,13 +1,14 @@
-import { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+import { STATUS_NOTIFICATIONS } from '../utils/orderStatus';
 
 axios.defaults.withCredentials = true;
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL;
 
 // Endpoints that need the seller token instead of the user token
-const SELLER_ENDPOINTS = ['/api/seller', '/api/product/add', '/api/product/bulk-add', '/api/product/stock', '/api/order/seller'];
+const SELLER_ENDPOINTS = ['/api/seller', '/api/product/add', '/api/product/bulk-add', '/api/product/stock', '/api/order/seller', '/api/order/status'];
 
 // Attach the right token to every request, read fresh from localStorage each time,
 // so a seller login never overwrites the user's Authorization header (and vice versa)
@@ -144,6 +145,64 @@ export const AppContextProvider = ({ children }) => {
         localStorage.setItem('cartItems', JSON.stringify(cartItems));
     }, [cartItems])
 
+    // Increases whenever one of the user's orders changes, so order pages can refresh
+    const [ordersVersion, setOrdersVersion] = useState(0)
+    const lastOrderStatuses = useRef(null)
+
+    // Check the user's orders in the background and pop up a notification when one changes,
+    // like the order updates in a delivery app
+    useEffect(() => {
+        if (!user) {
+            lastOrderStatuses.current = null
+            return
+        }
+
+        const checkOrderUpdates = async () => {
+            try {
+                const { data } = await axios.get('/api/order/updates')
+                if (!data.success) return
+
+                const previous = lastOrderStatuses.current
+                const current = {}
+                let changed = false
+                for (const order of data.orders) {
+                    current[order._id] = order.status
+                    if (previous && previous[order._id] !== undefined && previous[order._id] !== order.status) {
+                        changed = true
+                        // The customer already knows about cancellations they made themselves
+                        if (STATUS_NOTIFICATIONS[order.status] && order.cancelledBy !== 'customer') {
+                            toast.success(STATUS_NOTIFICATIONS[order.status], { id: `order-${order._id}`, duration: 5000 })
+                        }
+                    }
+                }
+                lastOrderStatuses.current = current
+                if (changed) setOrdersVersion((version) => version + 1)
+            } catch {
+                // Background check; try again on the next round
+            }
+        }
+
+        checkOrderUpdates()
+        const timer = setInterval(checkOrderUpdates, 20000)
+        return () => clearInterval(timer)
+    }, [user])
+
+    // Put the items of a past order back in the cart; returns how many could be added
+    const reorder = (order) => {
+        const cartData = structuredClone(cartItems)
+        let added = 0
+        for (const item of order.items) {
+            const productId = item.product?._id || item.product
+            const product = products.find((p) => p._id === productId)
+            if (product && product.isStock) {
+                cartData[productId] = (cartData[productId] || 0) + item.quantity
+                added += 1
+            }
+        }
+        setCartItems(cartData)
+        return added
+    }
+
     useEffect(()=>{
         const updateCart = async ()=>{
             try {
@@ -161,7 +220,7 @@ export const AppContextProvider = ({ children }) => {
         }
     },[cartItems, user])
 
-    const value = { navigate, user, setUser, authChecked, isSeller, setIsSeller, showUserLogin, setShowUserLogin, products, currency, addToCart,updateCartItem, removeFromCart, cartItems, searchQuery,setSearchQuery, getCartAmount, getCartCount, axios, fetchProducts, setCartItems };
+    const value = { navigate, user, setUser, authChecked, isSeller, setIsSeller, showUserLogin, setShowUserLogin, products, currency, addToCart,updateCartItem, removeFromCart, cartItems, searchQuery,setSearchQuery, getCartAmount, getCartCount, axios, fetchProducts, setCartItems, ordersVersion, reorder };
 
     return <AppContext.Provider value={value}>
         {children}

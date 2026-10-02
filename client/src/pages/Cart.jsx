@@ -48,7 +48,8 @@ try {
             toast.success(data.message)
             setCartItems({})
             localStorage.removeItem('cartItems')
-            navigate('/my-orders')
+            // Straight to live tracking, like a delivery app
+            navigate(data.orderId ? `/my-orders/${data.orderId}` : '/my-orders')
         }else{
             toast.error(data.message)
         }

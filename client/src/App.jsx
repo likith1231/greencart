@@ -12,6 +12,7 @@ import ProductDetails from "./pages/ProductDetails";
 import Cart from "./pages/Cart";
 import AddAddress from "./pages/AddAddress";
 import MyOrders from "./pages/MyOrders";
+import OrderTracking from "./pages/OrderTracking";
 import SellerLogin from "./components/seller/SellerLogin";
 import SellerLayout from "./pages/seller/SellerLayout";
 import AddProduct from "./pages/seller/AddProduct";
@@ -25,7 +26,7 @@ const App = () => {
 
   return (
     <div className="text-default min-h-screen text-gray-700 bg-white">
-      {isSellerpath ? null : <Navbar />}
+      {isSellerpath ? null : <div className="print:hidden"><Navbar /></div>}
       {showUserLogin ? <Login/> : null}
       <Toaster/>
 
@@ -39,6 +40,7 @@ const App = () => {
           <Route path ="/cart" element={<Cart/>} />
           <Route path ="/add-address" element={<AddAddress/>} />
           <Route path ="/my-orders" element={<MyOrders/>} />
+          <Route path ="/my-orders/:id" element={<OrderTracking/>} />
           <Route path ="/loader" element={<Loading/>} />
           <Route path ="/seller" element={isSeller ? <SellerLayout /> : <SellerLogin />}>
             <Route index element={isSeller ? <AddProduct /> : null} />
@@ -47,7 +49,7 @@ const App = () => {
           </Route>
         </Routes>
       </div>
-      {!isSellerpath && <Footer />}
+      {!isSellerpath && <div className="print:hidden"><Footer /></div>}
     </div>
   )
 }
