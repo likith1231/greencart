@@ -14,6 +14,9 @@ const MyOrders = () => {
   const [filter, setFilter] = useState("All");
   const [payingOrderId, setPayingOrderId] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  // Difference between the server's clock and this device's, so a wrong device clock
+  // doesn't break the "Arriving in X min" countdown
+  const [clockOffset, setClockOffset] = useState(0);
   const {currency, axios, user, navigate, ordersVersion, reorder} = useAppContext();
 
   // Reload when the background check spots a status change
@@ -25,6 +28,7 @@ const MyOrders = () => {
       .then(({data}) => {
         if(data.success){
           setMyOrders(data.orders)
+          if (data.serverTime) setClockOffset(data.serverTime - Date.now())
         } else {
           toast.error(data.message)
         }
@@ -102,7 +106,7 @@ const MyOrders = () => {
         <div key={order._id} className='border border-gray-200 rounded-xl p-4 md:p-5 bg-white'>
           <div className='flex flex-wrap items-start justify-between gap-3'>
             <div>
-              <p className='text-lg font-semibold text-gray-800'>{deliveryHeadline(order, now)}</p>
+              <p className='text-lg font-semibold text-gray-800'>{deliveryHeadline(order, now + clockOffset)}</p>
               <p className='text-sm text-gray-500'>
                 {itemCount} item{itemCount === 1 ? '' : 's'} · {currency}{order.amount.toFixed(2)} · Placed {formatDateTime(order.createdAt)}
               </p>

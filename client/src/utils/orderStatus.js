@@ -53,7 +53,8 @@ export const deliveryHeadline = (order, now = Date.now()) => {
   if (order.status === "Delivered") {
     return `Delivered at ${formatTime(order.deliveredAt || order.updatedAt)}`;
   }
-  if (!order.estimatedDeliveryAt) return order.status;
+  // Orders placed before tracking existed have no promised time
+  if (!order.estimatedDeliveryAt) return STEP_DESCRIPTIONS[order.status] || order.status;
   const minutesLeft = Math.ceil((new Date(order.estimatedDeliveryAt) - now) / 60000);
   return minutesLeft > 0 ? `Arriving in ${minutesLeft} min` : "Arriving any minute now";
 };
