@@ -25,10 +25,13 @@ const Loading = () => {
                 return
             }
             let cancelled = false
+            let target = `/${nextUrl}`
             axios.post('/api/order/verify', { sessionId })
                 .then(({ data }) => {
                     if(cancelled) return
                     if(data.success && data.paid){
+                        // Open the order's tracking page after a successful payment
+                        if(data.orderId) target = `/my-orders/${data.orderId}`
                         if(!data.payLater){
                             setCartItems({})
                             localStorage.removeItem('cartItems')
@@ -40,7 +43,7 @@ const Loading = () => {
                 })
                 .catch((error) => toast.error(error.message))
                 .finally(() => {
-                    if(!cancelled) navigate(`/${nextUrl}`)
+                    if(!cancelled) navigate(target)
                 })
             return () => { cancelled = true }
         }

@@ -1,4 +1,4 @@
-import Order from "../models/Order.js"
+import Order, { CANCELLED, DELIVERY_MINUTES, ORDER_STEPS } from "../models/Order.js"
 import Product from "../models/product.js";
 import stripe from "stripe";
 import User from "../models/User.js";
@@ -56,6 +56,17 @@ const buildOrder = async (userId, items, addressId) => {
     };
 };
 
+const minutesFromNow = (minutes) => new Date(Date.now() + minutes * 60 * 1000);
+
+// Fields every new order starts with: first step of the timeline and the promised delivery time
+const newOrderTracking = () => ({
+    status: ORDER_STEPS[0],
+    statusHistory: [{ status: ORDER_STEPS[0], at: new Date() }],
+    estimatedDeliveryAt: minutesFromNow(DELIVERY_MINUTES),
+});
+
+const getStripe = () => new stripe(process.env.STRIPE_SECRET_KEY);
+
 //Place Order COD: /api/order/cod
 export const placeOrderCOD = async (req, res) => {
     try {
@@ -64,11 +75,11 @@ export const placeOrderCOD = async (req, res) => {
 
         const { orderFields } = await buildOrder(userId, items, address);
 
-        await Order.create({ ...orderFields, paymentType: "COD", isPaid: false });
+        const order = await Order.create({ ...orderFields, ...newOrderTracking(), paymentType: "COD", isPaid: false });
 
         await User.findByIdAndUpdate(userId, { cartItems: {} });
 
-        return res.json({ success: true, message: "Order Placed Successfully" });
+        return res.json({ success: true, message: "Order Placed Successfully", orderId: order._id });
     } catch (error) {
         console.log("error ordering product : ", error.message);
         return res.json({ success: false, message: error.message });
@@ -77,8 +88,6 @@ export const placeOrderCOD = async (req, res) => {
 
 // Create a Stripe Checkout page for an order and return the session
 const createCheckoutSession = async ({ productData, tax, origin, cancelPath, metadata }) => {
-    const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
-
     // Stripe expects integer amounts in cents
     const line_items = productData.map((item) => ({
         price_data: {
@@ -100,7 +109,7 @@ const createCheckoutSession = async ({ productData, tax, origin, cancelPath, met
         });
     }
 
-    return stripeInstance.checkout.sessions.create({
+    return getStripe().checkout.sessions.create({
         line_items,
         mode: "payment",
         // Stripe fills in {CHECKOUT_SESSION_ID}, so the return page can confirm the payment
@@ -108,6 +117,66 @@ const createCheckoutSession = async ({ productData, tax, origin, cancelPath, met
         cancel_url: `${origin}${cancelPath}`,
         metadata,
     });
+};
+
+// Mark a Stripe-paid order as paid; shared by the return-page check, the webhook and the cleanup below
+const markOrderPaid = async ({ orderId, userId, payLater }, paymentIntentId) => {
+    const order = await Order.findById(orderId);
+    if (!order) return;
+
+    if (!order.isPaid) {
+        const wasOnlineOrder = order.paymentType === "Online";
+        order.isPaid = true;
+        order.paymentType = "Online";
+        if (paymentIntentId) order.paymentIntentId = paymentIntentId;
+
+        // An online order really starts once it's paid: restart the delivery clock,
+        // and revive it if it had been closed for not being paid
+        if (order.status === CANCELLED && order.cancelledBy === "system") {
+            order.status = ORDER_STEPS[0];
+            order.cancelReason = undefined;
+            order.cancelledBy = undefined;
+            order.statusHistory.push({ status: ORDER_STEPS[0], at: new Date() });
+        }
+        if (wasOnlineOrder && order.status === ORDER_STEPS[0]) {
+            order.estimatedDeliveryAt = minutesFromNow(DELIVERY_MINUTES);
+        }
+        await order.save();
+    }
+
+    // Paying later for a Cash on Delivery order must not empty the customer's current cart
+    if (payLater !== "true") {
+        await User.findByIdAndUpdate(userId, { cartItems: {} });
+    }
+};
+
+// Before starting a new online checkout, settle the customer's earlier unpaid online orders,
+// so the same items can't end up ordered (and paid) twice:
+// paid ones are marked paid, the rest have their Stripe page closed and are cancelled.
+const closeUnpaidOnlineOrders = async (userId) => {
+    const pending = await Order.find({ userId, paymentType: "Online", isPaid: false, status: { $ne: CANCELLED } });
+
+    for (const order of pending) {
+        if (order.stripeSessionId) {
+            try {
+                const session = await getStripe().checkout.sessions.retrieve(order.stripeSessionId);
+                if (session.payment_status === "paid") {
+                    await markOrderPaid({ ...session.metadata, payLater: "true" }, session.payment_intent);
+                    continue;
+                }
+                if (session.status === "open") {
+                    await getStripe().checkout.sessions.expire(order.stripeSessionId);
+                }
+            } catch (error) {
+                console.log("could not check old checkout : ", error.message);
+            }
+        }
+        order.status = CANCELLED;
+        order.cancelledBy = "system";
+        order.cancelReason = "Payment not completed";
+        order.statusHistory.push({ status: CANCELLED, at: new Date() });
+        await order.save();
+    }
 };
 
 //Place Order Stripe: /api/order/stripe
@@ -119,8 +188,10 @@ export const placeOrderStripe = async (req, res) => {
 
         const { orderFields, productData, tax } = await buildOrder(userId, items, address);
 
+        await closeUnpaidOnlineOrders(userId);
+
         // Saved only after Stripe accepts the session, so failed checkouts leave no stray orders
-        const order = new Order({ ...orderFields, paymentType: "Online", isPaid: false });
+        const order = new Order({ ...orderFields, ...newOrderTracking(), paymentType: "Online", isPaid: false });
 
         const session = await createCheckoutSession({
             productData,
@@ -130,6 +201,7 @@ export const placeOrderStripe = async (req, res) => {
             metadata: { orderId: order._id.toString(), userId },
         });
 
+        order.stripeSessionId = session.id;
         await order.save();
 
         return res.json({ success: true, url: session.url });
@@ -139,7 +211,7 @@ export const placeOrderStripe = async (req, res) => {
     }
 };
 
-//Pay online for an existing unpaid (Cash on Delivery) order: /api/order/pay
+//Pay online for one of the customer's unpaid orders: /api/order/pay
 export const payExistingOrder = async (req, res) => {
     try {
         const userId = req.userId;
@@ -153,6 +225,25 @@ export const payExistingOrder = async (req, res) => {
         }
         if (order.isPaid) {
             return res.json({ success: false, message: "This order is already paid" });
+        }
+        if (order.status === CANCELLED) {
+            return res.json({ success: false, message: "This order was cancelled" });
+        }
+
+        // If an earlier payment page for this order was completed, don't charge again
+        if (order.stripeSessionId) {
+            try {
+                const previous = await getStripe().checkout.sessions.retrieve(order.stripeSessionId);
+                if (previous.payment_status === "paid") {
+                    await markOrderPaid({ ...previous.metadata, payLater: "true" }, previous.payment_intent);
+                    return res.json({ success: false, message: "This order is already paid" });
+                }
+                if (previous.status === "open") {
+                    await getStripe().checkout.sessions.expire(order.stripeSessionId);
+                }
+            } catch (error) {
+                console.log("could not check previous checkout : ", error.message);
+            }
         }
 
         // Older orders didn't save prices, so fall back to the product's current price
@@ -175,26 +266,19 @@ export const payExistingOrder = async (req, res) => {
             productData,
             tax,
             origin,
-            cancelPath: "/my-orders",
-            // payLater keeps a Cash on Delivery order (and the customer's current cart) untouched if
-            // payment fails or succeeds. A pending online order came from the cart, so it clears it as usual.
+            cancelPath: `/my-orders/${order._id}`,
+            // payLater keeps a Cash on Delivery order (and the customer's current cart) untouched.
+            // A pending online order came from the cart, so it clears it as usual.
             metadata: { orderId: order._id.toString(), userId, payLater: order.paymentType === "COD" ? "true" : "false" },
         });
+
+        order.stripeSessionId = session.id;
+        await order.save();
 
         return res.json({ success: true, url: session.url });
     } catch (error) {
         console.log("error paying for order : ", error.message);
         return res.json({ success: false, message: error.message });
-    }
-};
-
-// Mark a Stripe-paid order as paid; shared by the return-page check and the webhook
-const markOrderPaid = async ({ orderId, userId, payLater }) => {
-    await Order.findByIdAndUpdate(orderId, { isPaid: true, paymentType: "Online" });
-
-    // Paying later for an old order must not empty the customer's current cart
-    if (payLater !== "true") {
-        await User.findByIdAndUpdate(userId, { cartItems: {} });
     }
 };
 
@@ -207,8 +291,7 @@ export const verifyStripePayment = async (req, res) => {
             return res.json({ success: false, message: "Missing payment session" });
         }
 
-        const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
-        const session = await stripeInstance.checkout.sessions.retrieve(sessionId);
+        const session = await getStripe().checkout.sessions.retrieve(sessionId);
 
         // Only the customer who placed the order can confirm it
         if (session.metadata?.userId !== req.userId) {
@@ -219,18 +302,131 @@ export const verifyStripePayment = async (req, res) => {
             return res.json({ success: true, paid: false, message: "Payment not completed" });
         }
 
-        await markOrderPaid(session.metadata);
+        await markOrderPaid(session.metadata, session.payment_intent);
 
-        return res.json({ success: true, paid: true, payLater: session.metadata.payLater === "true", message: "Payment successful" });
+        return res.json({
+            success: true,
+            paid: true,
+            payLater: session.metadata.payLater === "true",
+            orderId: session.metadata.orderId,
+            message: "Payment successful",
+        });
     } catch (error) {
         console.log("error verifying payment : ", error.message);
         return res.json({ success: false, message: error.message });
     }
 };
 
+// Cancel an order and refund it if it was paid online
+const cancelOrder = async (order, { by, reason }) => {
+    order.status = CANCELLED;
+    order.cancelledBy = by;
+    order.cancelReason = reason || "No reason given";
+    order.statusHistory.push({ status: CANCELLED, at: new Date() });
+
+    let refundMessage = "";
+    if (order.isPaid && order.paymentType === "Online") {
+        try {
+            let paymentIntentId = order.paymentIntentId;
+            if (!paymentIntentId && order.stripeSessionId) {
+                paymentIntentId = (await getStripe().checkout.sessions.retrieve(order.stripeSessionId)).payment_intent;
+            }
+            if (!paymentIntentId) throw new Error("payment reference missing");
+            await getStripe().refunds.create({ payment_intent: paymentIntentId });
+            order.paymentIntentId = paymentIntentId;
+            order.refundStatus = "refunded";
+            refundMessage = " Your refund has been sent to your card.";
+        } catch (error) {
+            console.log("refund failed : ", error.message);
+            order.refundStatus = "pending";
+            refundMessage = " Your refund will be processed by the store.";
+        }
+    }
+
+    await order.save();
+    return refundMessage;
+};
+
+// Customers can cancel until the order leaves the store
+const CUSTOMER_CANCELLABLE = ["Order Placed", "Confirmed", "Packed"];
+
+//Cancel an order (customer) : /api/order/cancel
+export const cancelOrderByUser = async (req, res) => {
+    try {
+        const { orderId, reason } = req.body;
+        const order = await Order.findOne({ _id: orderId, userId: req.userId });
+
+        if (!order) {
+            return res.json({ success: false, message: "Order not found" });
+        }
+        if (!CUSTOMER_CANCELLABLE.includes(order.status)) {
+            return res.json({ success: false, message: `This order can't be cancelled because it is ${order.status.toLowerCase()}` });
+        }
+
+        const refundMessage = await cancelOrder(order, { by: "customer", reason });
+        return res.json({ success: true, message: `Order cancelled.${refundMessage}` });
+    } catch (error) {
+        console.log("error cancelling order : ", error.message);
+        return res.json({ success: false, message: error.message });
+    }
+};
+
+//Move an order to its next step, or cancel it (seller) : /api/order/status
+export const updateOrderStatus = async (req, res) => {
+    try {
+        const { orderId, status, reason, deliveryPartner } = req.body;
+        const order = await Order.findById(orderId);
+
+        if (!order) {
+            return res.json({ success: false, message: "Order not found" });
+        }
+        if (order.status === CANCELLED || order.status === "Delivered") {
+            return res.json({ success: false, message: `This order is already ${order.status.toLowerCase()}` });
+        }
+        if (order.paymentType === "Online" && !order.isPaid) {
+            return res.json({ success: false, message: "This order hasn't been paid yet" });
+        }
+
+        if (status === CANCELLED) {
+            const refundMessage = await cancelOrder(order, { by: "seller", reason });
+            return res.json({ success: true, message: `Order cancelled.${refundMessage}` });
+        }
+
+        // Orders move forward one step at a time
+        const nextStatus = ORDER_STEPS[ORDER_STEPS.indexOf(order.status) + 1];
+        if (status !== nextStatus) {
+            return res.json({ success: false, message: `Next step for this order is "${nextStatus}"` });
+        }
+
+        if (status === "Out for Delivery") {
+            const name = deliveryPartner?.name?.trim();
+            const phone = deliveryPartner?.phone?.trim();
+            if (!name || !phone) {
+                return res.json({ success: false, message: "Enter the delivery partner's name and phone number" });
+            }
+            order.deliveryPartner = { name, phone };
+        }
+
+        if (status === "Delivered") {
+            order.deliveredAt = new Date();
+            // Cash on Delivery is paid when the order is handed over
+            if (order.paymentType === "COD") order.isPaid = true;
+        }
+
+        order.status = status;
+        order.statusHistory.push({ status, at: new Date() });
+        await order.save();
+
+        return res.json({ success: true, message: `Order marked as ${status}` });
+    } catch (error) {
+        console.log("error updating order : ", error.message);
+        return res.json({ success: false, message: error.message });
+    }
+};
+
 //Stripe Webhooks to verify payments: /stripe
 export const stripeWebhooks = async (request, response) => {
-    const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY);
+    const stripeInstance = getStripe();
 
     const sig = request.headers["stripe-signature"];
     let event;
@@ -254,24 +450,12 @@ export const stripeWebhooks = async (request, response) => {
                     payment_intent: paymentIntentId,
                 });
 
-                await markOrderPaid(session.data[0].metadata);
+                await markOrderPaid(session.data[0].metadata, paymentIntentId);
                 break;
             }
-            case "payment_intent.payment_failed": {
-                const paymentIntentId = event.data.object.id;
-
-                const session = await stripeInstance.checkout.sessions.list({
-                    payment_intent: paymentIntentId,
-                });
-
-                const { orderId, payLater } = session.data[0].metadata;
-
-                // A failed later payment keeps the Cash on Delivery order as it was
-                if (payLater !== "true") {
-                    await Order.findByIdAndDelete(orderId);
-                }
+            case "payment_intent.payment_failed":
+                // The customer can retry on the same Stripe page, so the order is kept as unpaid
                 break;
-            }
             default:
                 console.log(`Unhandled event type ${event.type}`);
                 break;
@@ -287,15 +471,33 @@ export const stripeWebhooks = async (request, response) => {
 //Get Orders by User ID : /api/order/user
 export const getUserOrders = async (req, res) => {
     try {
-        const userId = req.userId;
-
-        if (!userId) {
-            return res.json({ success: false, message: "User not authenticated" });
-        }
-        
         // Includes unpaid online orders, so customers can see them and finish paying
-        const orders = await Order.find({ userId }).populate("items.product address").sort({createdAt: -1});
+        const orders = await Order.find({ userId: req.userId }).populate("items.product address").sort({createdAt: -1});
 
+        res.json({ success: true, orders });
+    } catch(error) {
+        res.json({ success:false, message: error.message });
+    }
+};
+
+//Get one of the customer's orders, for the tracking page : /api/order/details?id=
+export const getOrderDetails = async (req, res) => {
+    try {
+        const order = await Order.findOne({ _id: req.query.id, userId: req.userId }).populate("items.product address");
+
+        if (!order) {
+            return res.json({ success: false, message: "Order not found" });
+        }
+        res.json({ success: true, order });
+    } catch(error) {
+        res.json({ success:false, message: error.message });
+    }
+};
+
+//Status of the customer's orders, polled by the site to show update notifications : /api/order/updates
+export const getOrderUpdates = async (req, res) => {
+    try {
+        const orders = await Order.find({ userId: req.userId }, { status: 1, isPaid: 1, cancelledBy: 1 }).sort({ createdAt: -1 }).limit(20);
         res.json({ success: true, orders });
     } catch(error) {
         res.json({ success:false, message: error.message });

@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../context/AppContext';
 import toast from 'react-hot-toast';
+import {
+  STATUS_BADGE_CLASSES, deliveryHeadline, displayStatus, formatDateTime, isActiveOrder, isAwaitingPayment,
+} from '../utils/orderStatus';
+
+const FILTERS = ["All", "Active", "Delivered", "Cancelled"];
 
 const MyOrders = () => {
 
   const [myOrders, setMyOrders] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [filter, setFilter] = useState("All");
   const [payingOrderId, setPayingOrderId] = useState(null);
-  const {currency, axios, user} = useAppContext();
-  
+  const [now, setNow] = useState(() => Date.now());
+  const {currency, axios, user, navigate, ordersVersion, reorder} = useAppContext();
+
+  // Reload when the background check spots a status change
   useEffect(() => {
     if(!user){
       return;
@@ -20,10 +29,17 @@ const MyOrders = () => {
           toast.error(data.message)
         }
       })
-      .catch((error) => toast.error(error.message));
-  }, [user, axios]);
+      .catch((error) => toast.error(error.message))
+      .finally(() => setLoaded(true));
+  }, [user, axios, ordersVersion]);
 
-  // Opens Stripe Checkout to pay online for a Cash on Delivery order
+  // Keep the "Arriving in X min" countdown current
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Opens Stripe Checkout to pay online for an unpaid order
   const payOnline = async (orderId) => {
     setPayingOrderId(orderId);
     try {
@@ -39,97 +55,95 @@ const MyOrders = () => {
     setPayingOrderId(null);
   };
 
+  const handleReorder = (order) => {
+    const added = reorder(order);
+    if (added === 0) {
+      toast.error("These items are not available right now");
+      return;
+    }
+    toast.success(added === order.items.length ? "Items added to your cart" : "Available items added to your cart");
+    navigate('/cart');
+  };
+
+  const filteredOrders = myOrders.filter((order) => {
+    if (filter === "Active") return isActiveOrder(order) || isAwaitingPayment(order);
+    if (filter === "Delivered") return order.status === "Delivered";
+    if (filter === "Cancelled") return order.status === "Cancelled";
+    return true;
+  });
+
   return (
-    <div className='mt-16 pb-16'>
-      <div className='flex flex-col items-end w-max my-8'>
+    <div className='mt-16 pb-16 max-w-4xl'>
+      <div className='flex flex-col items-end w-max mb-6'>
         <p className='text-2xl font-medium uppercase'>My orders</p>
         <div className='w-16 h-0.5 bg-primary rounded-full'></div>
       </div>
-      {myOrders.length === 0 && (
-        <p className='text-gray-500'>You haven't placed any orders yet.</p>
+
+      <div className='flex gap-2 flex-wrap mb-6'>
+        {FILTERS.map((name) => (
+          <button key={name} onClick={() => setFilter(name)}
+            className={`px-4 py-1.5 rounded-full text-sm border cursor-pointer transition ${filter === name ? 'bg-primary text-white border-primary' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+            {name}
+          </button>
+        ))}
+      </div>
+
+      {loaded && filteredOrders.length === 0 && (
+        <p className='text-gray-500'>{myOrders.length === 0 ? "You haven't placed any orders yet." : `No ${filter.toLowerCase()} orders.`}</p>
       )}
-      {myOrders.map((order) => {
+
+      <div className='space-y-4'>
+      {filteredOrders.map((order) => {
         const items = order.items.filter((item) => item.product)
-        // Older orders didn't store prices or an address copy, so fall back to current data
-        const itemPrice = (item) => item.price ?? item.product.offerPrice
-        const subtotal = order.subtotal ?? items.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0)
-        const tax = order.tax ?? Math.max(order.amount - subtotal, 0)
-        const address = order.shippingAddress || order.address
-        const paymentStatus = order.isPaid ? "Paid" : order.paymentType === "COD" ? "Pay on delivery" : "Payment pending"
+        const status = displayStatus(order)
+        const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0)
 
         return (
-        <div key={order._id} className='border border-gray-300 rounded-lg my-10 p-4 py-5 max-w-4xl'>
-          <div className='flex justify-between md:items-center text-gray-400 md:font-medium max-md:flex-col gap-1'>
-            <span>Order ID : {order._id}</span>
-            <span>Placed on : {new Date(order.createdAt).toLocaleDateString()}</span>
-            <span>Status : <span className='text-primary'>{order.status}</span></span>
+        <div key={order._id} className='border border-gray-200 rounded-xl p-4 md:p-5 bg-white'>
+          <div className='flex flex-wrap items-start justify-between gap-3'>
+            <div>
+              <p className='text-lg font-semibold text-gray-800'>{deliveryHeadline(order, now)}</p>
+              <p className='text-sm text-gray-500'>
+                {itemCount} item{itemCount === 1 ? '' : 's'} · {currency}{order.amount.toFixed(2)} · Placed {formatDateTime(order.createdAt)}
+              </p>
+            </div>
+            <span className={`text-xs font-medium px-3 py-1 rounded-full ${STATUS_BADGE_CLASSES[status] || 'bg-gray-100 text-gray-600'}`}>{status}</span>
           </div>
 
-          {items.map((item, index) => (
-            <div key={index}
-            className={`relative bg-white text-gray-500/70 ${
-              items.length !== index + 1 ? "border-b" : ""
-            } border-gray-300 flex flex-col md:flex-row md:items-center justify-between p-4 py-5 md:gap-16 w-full max-w-4xl`}>
-              <div className='flex items-center my-4 md:my-0'>
-                <div className='bg-primary/10 p-4 rounded-lg'>
-                  <img src={item.product.image[0]} alt="" className='w-16 h-16' />
-                </div>
-                <div className='ml-4'>
-                  <h2 className='text-xl font-medium text-gray-800'>{item.product.name}</h2>
-                  <p>Category: {item.product.category}</p>
-                </div>
+          <div className='flex gap-2 mt-4 overflow-x-auto'>
+            {items.slice(0, 6).map((item, index) => (
+              <div key={index} className='relative shrink-0 bg-primary/10 rounded-lg p-1.5'>
+                <img src={item.product.image[0]} alt={item.product.name} title={item.product.name} className='w-12 h-12 object-contain' />
+                {item.quantity > 1 && (
+                  <span className='absolute -top-1.5 -right-1.5 bg-gray-800 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center'>{item.quantity}</span>
+                )}
               </div>
+            ))}
+            {items.length > 6 && <div className='shrink-0 w-[60px] h-[60px] rounded-lg bg-gray-100 flex items-center justify-center text-sm text-gray-500'>+{items.length - 6}</div>}
+          </div>
 
-              <div className='flex flex-col justify-center md:ml-8 my-4 md:my-0'>
-                <p>Price: {currency}{itemPrice(item).toFixed(2)}</p>
-                <p>Quantity: {item.quantity}</p>
-              </div>
-
-              <p className='text-primary text-lg font-medium'>Amount: {currency}{(itemPrice(item) * item.quantity).toFixed(2)}</p>
-            </div>
-          ))}
-
-          <div className='flex flex-col md:flex-row justify-between gap-6 border-t border-gray-300 mt-2 pt-4 px-4 text-sm text-gray-500'>
-            <div>
-              <p className='font-medium text-gray-700 mb-1'>Delivery Address</p>
-              {address ? (
-                <>
-                  <p>{address.firstName} {address.lastName}</p>
-                  <p>{address.street}, {address.city}</p>
-                  <p>{address.state} {address.zipcode}, {address.country}</p>
-                  <p>{address.phone}</p>
-                </>
-              ) : (
-                <p>Address not available</p>
-              )}
-            </div>
-
-            <div>
-              <p className='font-medium text-gray-700 mb-1'>Payment</p>
-              <p>Method: {order.paymentType === "COD" ? "Cash on Delivery" : "Online (Card)"}</p>
-              <p>Status: <span className={order.isPaid ? 'text-green-600' : 'text-orange-500'}>{paymentStatus}</span></p>
-              {!order.isPaid && (
-                <button
-                  onClick={() => payOnline(order._id)}
-                  disabled={payingOrderId !== null}
-                  className='mt-3 px-5 py-2 bg-primary hover:bg-primary-dull transition text-white rounded cursor-pointer disabled:opacity-60 disabled:cursor-wait'
-                >
-                  {payingOrderId === order._id ? "Opening payment..." : `Pay ${currency}${order.amount.toFixed(2)} Online`}
-                </button>
-              )}
-            </div>
-
-            <div className='md:min-w-48'>
-              <p className='font-medium text-gray-700 mb-1'>Order Summary</p>
-              <p className='flex justify-between gap-6'><span>Subtotal</span><span>{currency}{subtotal.toFixed(2)}</span></p>
-              <p className='flex justify-between gap-6'><span>Shipping</span><span className='text-green-600'>Free</span></p>
-              <p className='flex justify-between gap-6'><span>Tax (2%)</span><span>{currency}{tax.toFixed(2)}</span></p>
-              <p className='flex justify-between gap-6 font-medium text-gray-800 text-base mt-1'><span>Total</span><span>{currency}{order.amount.toFixed(2)}</span></p>
-            </div>
+          <div className='flex flex-wrap gap-2 mt-4'>
+            <button onClick={() => navigate(`/my-orders/${order._id}`)}
+              className='px-4 py-2 text-sm bg-primary hover:bg-primary-dull text-white rounded-lg cursor-pointer transition'>
+              {isActiveOrder(order) ? 'Track order' : 'View details'}
+            </button>
+            {!order.isPaid && order.status !== "Cancelled" && (
+              <button onClick={() => payOnline(order._id)} disabled={payingOrderId !== null}
+                className='px-4 py-2 text-sm border border-primary text-primary rounded-lg hover:bg-primary/10 cursor-pointer transition disabled:opacity-60 disabled:cursor-wait'>
+                {payingOrderId === order._id ? "Opening payment..." : `Pay ${currency}${order.amount.toFixed(2)} now`}
+              </button>
+            )}
+            {(order.status === "Delivered" || order.status === "Cancelled") && (
+              <button onClick={() => handleReorder(order)}
+                className='px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 cursor-pointer transition'>
+                Reorder
+              </button>
+            )}
           </div>
         </div>
         )
       })}
+      </div>
     </div>
   )
 }
